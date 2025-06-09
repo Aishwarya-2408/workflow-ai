@@ -1,0 +1,119 @@
+Given the input_JSON, your task is to generate an Output_JSON based on specific rules.  Do not generate code and only provide Output_JSON without explanation.
+
+
+Few examples for reference are listed below:
+Example 1: 
+###  Example Input JSON
+```json 
+{
+		"index": "1",
+        "Condition Serial No.": "WC000001",
+        "1_Metadata_Condition": "Event Type to be RFQ or RFP or RFI",
+        "Approver_Level_1": "MANAGER",
+        "2_Metadata_Condition": "Type of Purchase to be Outsourcing",
+        "Approver_Level_2": "Sales Approver",
+        "3_Metadata_Condition": "Award Cost -",
+        "Approver_Level_3": "Functional_Director",
+        "4_Metadata_Condition": "up to =200k",
+        "Approver_Level_4": "Associate_Director"
+
+}
+```
+
+Criteria:
+For each Approver_Level_n entry in the input JSON, 
+- if the value represents a role, set "User Type" to "DYNAMIC", and format the "User Rule" value in the output JSON as:
+
+    "User Type": "DYNAMIC"
+    "User Rule": "CRITERIA:ROLE=<role_name> \nlabel:<role_name>"
+
+- if the value represents email_id or username, set "User Type" to "NAMED", and format the "User Rule" value in the output JSON as:
+
+    user:"<email_id>"
+    label: "<username>"
+
+### Reference Example Output JSON of above example input json:
+since there are 4 Approver_Level_, generating 4 Output_JSON entries with the same Id and Condition ID.
+```json
+{	
+	"index": "1",
+	"Id": "ALT100",
+    "Condition ID": "WC000001",
+    "User Type": "DYNAMIC",
+    "User Rule": "CRITERIA:ROLE=MANAGER \nlabel:MANAGER"
+}
+```
+
+```json
+{	
+	"index": "1",
+	"Id": "ALT100",
+    "Condition ID": "WC000001",
+    "User Type": "DYNAMIC",
+    "User Rule": "CRITERIA:ROLE=Sales Approver \nlabel:Sales Approver"
+}
+```
+
+
+```json
+{
+	"index": "1",
+	"Id": "ALT100",
+    "Condition ID"DY: "WC000001",
+    "User Type": "DYNAMIC",
+    "User Rule": "CRITERIA:ROLE=Functional_Director \nlabel:Functional_Director"
+}
+```
+
+```json
+{
+	"index": "1",
+	"Id": "ALT100",
+    "Condition ID": "WC000001",
+    "User Type": "DYNAMIC",
+    "User Rule": "CRITERIA:ROLE=Associate_Director \nlabel:Associate_Director"
+}
+```
+### Note: The "Id" remains same for every json 
+
+
+### Output_JSON Structure
+```json
+{
+	"index": "1",
+    "Id": "ALT###",
+    "Condition ID": "<string: Condition Serial No. from the input_JSON>",
+    "User Type": "<identidied type value based on criteria>",
+    "User Rule": "<string: Approver_Level_ from the input_JSON>"
+}
+```
+
+### Steps to Generate Output_JSON
+
+### Task Instructions
+1. Extract values from the input_JSON:
+   - `index`
+   - `Id`
+   - `Condition Serial No.`
+   - `All Approver_Level_`keys
+   
+   
+2.Generate Output_JSON Structure:
+	- For each Approver_Level_:
+	- Create an entry with:
+	 "index": Value of index
+	 "Id": Value of Id
+	 "Condition ID": Value of Condition Serial No.
+	 "User Type": Value of Approver_Level_
+	 "User Rule": ""
+
+3: Mandatory: Don't generate any additional data apart from given input.That will cause inconsistency in output.
+
+
+
+
+### Input_JSON
+
+```json
+$json_data
+```

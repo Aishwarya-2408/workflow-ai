@@ -1,0 +1,186 @@
+File Introduction:-
+The ConditionArea column has information about region for which the workflow is present.
+The CondtionTotalValue has information about each level conditions for a region and contract category (All the condtions must be choosen from here only).
+The columns Level has different levels mapped to group of users/approvers.
+Similarly Lvl 1 is first level of approval followed by Group Name
+Lvl 2 column which is about second level of approval followed by Lv1 2 GRp 1 consist of appover list followed by Group Name
+Lvl 3 column which is about thrid level of approval followed by group 2 consist of respective approvers list
+
+
+For this data extract a json which has all the levels in it.
+Example:-
+{
+"L0":{
+"name": "Lvl 1",
+"description": "<Some basic description about this (single line) (The 1st level, 2nd level, etc and there some basic meaning as per the name and level.)>"
+},
+"L1":{....},
+.....
+}
+
+L0 is the lowest level and with further levels being higher (in authority and approval amount, critical decisions).
+
+
+
+---
+Now fetch all the conditions from this data in a json format.
+The conditions are specified in the following columns:
+ConditionTotal Value column contains the most important conditions for each approvers.
+Contract Category column contains the various contract values sepereated by comma, so consider this as well in the conditions.
+ConditionArea column contains region information which should also be condisered in conditions.
+The condition will be combination of above 3.
+
+Example:-
+[
+    {
+        "id": "WC001",
+        "1_Metadata_Condition": "Condition A",
+        "Approver_Level_1": "Approver 1",
+        "2_Metadata_Condition": "Condition B - Budget > $5000",
+        "Approver_Level_2": "Approver 2",
+        "3_Metadata_Condition": "Condition C - YES: 1",
+        "Approver_Level_3": "Final Approval"
+    },
+    {
+        "id": "WC002",
+        "1_Metadata_Condition": "Condition A",
+        "Approver_Level_1": "Approver 1",
+        "2_Metadata_Condition": "Condition B - Budget > $5000",
+        "Approver_Level_2": "Approver 2",
+        "3_Metadata_Condition": "Condition C - YES: 2",
+        "Approver_Level_3": "Final Approval"
+    },
+    {
+        "id": "WC003",
+        "1_Metadata_Condition": "Condition A",
+        "Approver_Level_1": "Approver 1",
+        "2_Metadata_Condition": "Condition B - Budget > $5000",
+        "Approver_Level_2": "Approver 2",
+        "3_Metadata_Condition": "Condition C - YES: 3",
+        "Approver_Level_3": "Final Approval"
+    }
+]
+
+Similarly do extract all the unique conditions.
+There might be a single sentence having multiple conditions separated by 'or' or '+' or '/' or similar.
+There might be some that are related like having 'and' or similar thing showing relation.
+
+
+
+---
+Now, map the previously extracted conditions to the appropriate levels.  
+Each condition might map to one or more levels.  
+
+Be EXTREMELY careful to consider the ENTIRE condition description when determining the level.  
+If a condition description includes MULTIPLE criteria joined by "and", "+", "or", or "/", ALL criteria must be considered TOGETHER to determine the correct level(s).  
+Do NOT assign levels based on individual parts of a combined condition.  
+
+Output a JSON object in the following format:
+{
+  "condition1": ["L0"],  // Example: condition1 maps to level L0
+  "condition2": ["L1", "L2"], // Example: condition2 maps to levels L1 AND L2
+  "condition3": ["L3"],
+  ...
+}
+
+Treat each distinct numerical range or contract duration as a SEPARATE condition, even if they appear within the same description string. 
+For example, "Yearly contract value: >10 million - =25 million + All contracts >5M and >2Y + All contracts >5Y" should be treated as THREE separate conditions:
+1.  Yearly contract value: >10 million - =25 million
+2.  All contracts >5M and >2Y
+3.  All contracts >5Y
+
+Assign the appropriate level(s) to EACH of these SEPARATE conditions. 
+If a level's description matches ANY part of a combined condition, include that level in the mapping for the ENTIRE combined condition. 
+The output MUST be valid JSON.
+Do not include any explanatory text, only the JSON.
+
+
+
+---
+I have also provided the 'Conditions JSON' and 'Condition-Level Mapping' to refer as context for the given data.
+Now as we have the conditions and the levels as well which are needed for that condition, make a json of categorymapping.
+So it will be like:-
+{
+    "Region": { // e.g., NORAM
+        "Direct/Indirect" : { // e.g., Direct
+            "Category1": {  // e.g., "PACKAGING MATERIALS - Packaging"
+                "SubCategory1": {  // e.g., "BRICKS"
+                    {"condition-description": [  // e.g. Yearly contract value: >25 million - =50 million (You will get this from conditions json)
+                            {
+                                "user": <email-id from data>,
+                                "label": "<Name from data>"
+                            },
+                            {
+                                "user": <email-id from data>,
+                                "label": "<Name from data>"
+                            } // So there can be multiple users for a condition, this will be getting by the Condition-Level Mapping json.
+                        ]
+                    }
+                },
+                "SubCategory2": {  // e.g., "BIG BAGS"
+                    {"condition-description": [
+                        {
+                            "user": <email-id from data>,
+                            "label": "<Name from data>"
+                        }
+                    ]
+                }
+                },
+            },
+            "Category2": {  // e.g., "RAW MATERIALS - FOOD"
+                "SubCategoryA": {
+                    {"condition-description": [
+                            {
+                                "user": <email-id from data>,
+                                "label": "<Name from data>"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}
+
+Note:-
+In data if for any column the value is Missing or NaN or pd.NA or Null/null or NA or N/A or None or Not Available or Empty then use them as N/A, dont skip it.
+Don't take the next column value ever.
+Don't skip any condition provided in the Conditions JSON.
+Only use the conditions specified in Conditions JSON, don't make new of mix different conditions.
+Have all the users for a condition as per the Condition-Level Mapping, dont skip any user.
+
+
+
+---
+Now with this below data I want to do some data transformation.
+So the expected output will be like:-
+{
+"Condition": "Select_your_Region_to_request_approval=NORAM&&Select_DirectIndirect_Contract=DIRECT&&Select_the_Level_1_Macro_Category=PACKAGINGMATERIALS-Packaging&&Select_the_Level_2_Cost_Category=BRICKS&&Contract_Annual_Value_converted_Original>3000000&&Contract_Annual_Value_converted_Original<=10000000"
+"User Rule": {
+"user": "jennifer.petibon@danone.com",
+"label": "Jennifer Petibon"
+},
+{
+"user": "vincent.mainguet@danone.com",
+"label": "Vincent Mainguet"
+}
+}
+
+So in condition we have certain keys for which value needs to be filled by the json we have (I will provide again below).
+The keys are:-
+Select_your_Region_to_request_approval -> It means the region of that commodity   // e.g., NORAM
+Select_DirectIndirect_Contract -> It means the value there is in data, whether direct or indirect    // e.g., Direct
+Select_the_Level_1_Macro_Category -> It means the Category   // e.g., "PACKAGING MATERIALS - Packaging"
+Select_the_Level_2_Cost_Category -> It means the SubCategory   // e.g., "BRICKS"
+Contract_Annual_Value_converted_Original -> It means the yearlyContractValue (Here there can be less then and greater then both or any one as per our range) (Note convert the value to full number like >3 Million to >3000000, to 10 million, or -10 million to < 10000000, or 5M to 5 million, etc
+
+Each condition id has can have one or more then 1 user rule, but can only have one condition.
+So its like for each condition we have one condition id.
+
+
+
+---
+I have also provided the 'Conditions JSON' and 'Condition-Level Mapping' to refer as context for the given data.
+Now as we have the conditions and the levels as well which are needed for that condition, make a complete detailed json by using both the data.
+So, essentially you just need to specify the actual level name value instead of the given level key in the Condition-Level Mapping and also replace the condition key with the actual condition value.
+I want this to be in proper flow, so arrange the json in a way that we have proper flow of approval process.

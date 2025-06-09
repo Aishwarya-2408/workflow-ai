@@ -1,0 +1,48 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+build/
+env/
+environment/
+workflow_env/
+.env
+.venv/
+.env.*
+*.sqlite3
+*.log
+*.bat
+*.zip
+*.xlsx
+
+
+# === Jupyter Notebooks ===
+.ipynb_checkpoints/
+
+# === React (Frontend) ===
+Frontend/node_modules/
+Frontend/build/
+Frontend/.env
+Frontend/.next/
+Frontend/.cache/
+
+# === Backend ===
+Backend/LOGS/
+Backend/Output/
+Backend/data/
+Backend/uploads/
+Backend/chat_history/
+Backend/**/*.xlsx
+Backend/spend-414113-317ef43f081b.json
+
+# === IDEs ===
+.vscode/
+.idea/
+.cursorignore
+
+# === System Files ===
+.DS_Store
+.langchain.db
+Thumbs.db

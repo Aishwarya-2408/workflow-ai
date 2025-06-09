@@ -1,0 +1,73 @@
+Analyze the provided  image and extract all valid conditions as structured JSON data. 
+
+       ### Strict Extraction Rules:  
+        1. **Identify start point and Ensure that every condition is accurately identified and processed.Ensure that no additional conditions are introduced.
+        2. **Ensure correct sequencing** of conditions and approvers.
+        3. **Preserve all text values exactly as they appear**—no modifications, no synonym replacements, and no reordering.
+        4. **When dealing with flowcharts, Identify all unique paths leading to "Approval"** while maintaining their exact structure. 
+        5. **When dealing with flowcharts, Track only "YES" transitions** at decision points and ignore "NO" transitions, even if they lead to approval.     
+        6. **When analyzing flowcharts, If a "YES" transition line contains decision pointing text beyond yes and no, treat it as a part of condition and merge it with `<condition_text>`.
+        
+        ### **Expected Output Format (Strict JSON Structure)**
+        The response **must be a structured JSON array**, where each path follows the format:  
+        ```json
+        [
+        {
+            "id": "WC###",
+            "1_Metadata_Condition": "<condition_1>",
+            "Approver_Level_1": "<approver_1>",
+            "2_Metadata_Condition": "<condition_2>",
+            "Approver_Level_2": "<approver_2>",
+            ...
+        }
+        ]
+        
+        ### **Example1 Flowchart with Transition Texts**
+        (Start)
+        ↓
+        [Condition A?]
+        ├── (YES) → [Manager]
+        | ↓
+        | [Condition B?]
+        | ├── (YES: Budget > $5000) → [Sub Manager] → [Condition C]
+        | └── (NO) → [Condition C]
+        |
+        └── (NO) → [Condition B]
+
+        [Condition C?]
+        ├── (YES: 1) → [Final Approval]
+        ├── (YES: 2) → [Final Approval]
+        ├── (YES: 3) → [Final Approval]
+        └── (NO: All 1, 2, and 3) → [Reject]
+
+        ### **Example1 Flowchart JSON Output**
+        ```json
+        [
+            {
+                "id": "WC001",
+                "1_Metadata_Condition": "Condition A",
+                "Approver_Level_1": "Manager",
+                "2_Metadata_Condition": "Condition B - Budget > $5000",
+                "Approver_Level_2": "Sub Manager",
+                "3_Metadata_Condition": "Condition C - 1",
+                "Approver_Level_3": "Final_Approval"
+            },
+            {
+                "id": "WC002",
+                "1_Metadata_Condition": "Condition A",
+                "Approver_Level_1": "Manager",
+                "2_Metadata_Condition": "Condition B - Budget > $5000",
+                "Approver_Level_2": "Sub Manager",
+                "3_Metadata_Condition": "Condition C - 2",
+                "Approver_Level_3": "Final Approval"
+            },
+            {
+                "id": "WC003",
+                "1_Metadata_Condition": "Condition A",
+                "Approver_Level_1": "Manager",
+                "2_Metadata_Condition": "Condition B - Budget > $5000",
+                "Approver_Level_2": "Sub Manager",
+                "3_Metadata_Condition": "Condition C - 3",
+                "Approver_Level_3": "Final Approval"
+            }
+        ]

@@ -1,0 +1,62 @@
+Analyze the provided  image and extract all required data mentioned below.
+	### Strict Extraction Rules: 
+	1. **A "Condition" should always be a decision point that requires evaluation and "Approver" should always be an entity or role responsible for decision-making but should not itself be a condition
+	2. **Identify all conditions and approvers and Extract in a list. Also, maintain transition values between condition and approvers.
+	3. **While processing flowcharts, the start point (first action in the flow) must also be included as a "Starting Action" with its next transition.It should NEVER be treated as a "Condition."
+	4. **While processing flowcharts, ensure that every transition between conditions and approvers is recorded, even when an approver leads to another condition. No transition should be omitted. 
+	5. **When analyzing decision tables, Intelligently track "NA," null, or unknown conditions without inferring additional ones.
+	6. **When analyzing decision tables, no need to generate transitions. If an approver has a condition-specific value, append that value to the condition instead of the approver.The approver value should contain only the role names/ info.
+	7. **Do not introduce additional conditions.
+	
+
+	### **Example1
+	### Conditions and Approvers List :
+
+	1. **Condition:** Check Item Type
+	- **Approver:** Item approver
+	- **Transition:** 1
+
+	2. **Condition:** Item cost <  threshold
+	- **Approver:** Yes (leads to Requisition approved)
+	- **Transition:** 2
+
+	3. **Condition:** Item cost <  threshold
+	- **Approver:** No
+	- **Transition:** Leads to Billing type
+
+	4. **Condition:** Billing type
+	- **Approver:**
+		- Manufacturing: Item Manufacturing Centre
+		- Selling : Selling Unit
+		- Packaging: Packaging Centre
+		- Payment: Payment gateway Authority
+	- **Transition:** 3
+
+	5. **Condition:** Unit1 < threshold 1st approver
+	- **Approver:** Yes (leads to Requisition approved)
+	- **Transition:** 4
+
+	6. **Condition:** Unit1 < threshold 1st approver
+	- **Approver:** No
+	- **Transition:** Leads to Customer with required threshold
+
+	7. **Condition:** Unit1 > Old threshold
+	- **Approver:** No or N/A (leads to Requisition approved)
+	- **Transition:** 5
+
+	8. **Condition:** Unit1 > Old threshold
+	- **Approver:** Customer assigned to 4s approval
+	- **Transition:** Leads to Requisition approved
+
+
+	### Transition Values:
+	- From "Check Item Type" to "Item approver "
+	- From "Item approver " to "Item cost <  threshold"
+	- From "Item cost <  threshold" (YES) to "Requisition approved"
+	- From "Item cost <  threshold" (NO) to "Billing type"
+	- From "Billing type" to respective approvers based on type (Manufacturing, Selling, Packaging, Payment)
+	- From "Unit1 < threshold 1st approver" (YES) to "Requisition approved"
+	- From "Unit1 < threshold 1st approver" (NO) to "Customer with required threshold"
+	- From "Customer with required threshold" to "Unit1 > Old threshold"
+	- From "Unit1 > Old threshold" (NO or N/A) to "Requisition approved"
+	- From "Unit1 > Old threshold" (YES) to "Customer assigned to 4s approval"

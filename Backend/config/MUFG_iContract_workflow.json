@@ -1,0 +1,77 @@
+{
+    "MUFG_iContract_20250404_130601": {
+        "prompts": [
+            "level_prompt",
+            "condition_prompt",
+            "condition_level_mapping_prompt",
+            "named_tree_prompt",
+            "tree_transform_to_mcw_wcm_prompt"
+        ],
+        "optimize_prompt": false,
+        "extract_levels": true,
+        "extract_conditions": true,
+        "map_conditions_to_levels": true,
+        "map_categories": true,
+        "transform_category_mapping": true,
+        "tree_chunk_size": 1,
+        "transfrom_chunk_size": 3,
+        "prompt_file": "prompts\\mufg_iContract_with_chain_prompt.txt",
+        "file_path": "uploads/MUFG.xlsx",
+        "header_rows": 1,
+        "data_start_row": 2,
+        "chaining": true,
+        "note": "MUFG iContract Approval Workflow",
+        "num_rows": 13,
+        "sheet_name": "Approval Workflow"
+    },
+    "MUFG_iContract_20250404_131151": {
+        "prompts": [
+            "level_prompt",
+            "condition_prompt",
+            "condition_level_mapping_prompt",
+            "named_tree_prompt",
+            "tree_transform_to_mcw_wcm_prompt"
+        ],
+        "optimize_prompt": false,
+        "extract_levels": true,
+        "extract_conditions": true,
+        "map_conditions_to_levels": true,
+        "map_categories": true,
+        "transform_category_mapping": true,
+        "tree_chunk_size": 1,
+        "transfrom_chunk_size": 3,
+        "prompt_file": "prompts\\mufg_iContract_with_chain_prompt.txt",
+        "file_path": "uploads/MUFG.xlsx",
+        "header_rows": 1,
+        "data_start_row": 2,
+        "chaining": true,
+        "note": "MUFG iContract - Approval Workflow",
+        "num_rows": 13,
+        "sheet_name": "Approval Workflow"
+    },
+    "MUFG_iContract_20250404_135105": {
+        "prompts": [
+            "level_prompt",
+            "condition_prompt",
+            "condition_level_mapping_prompt",
+            "named_tree_prompt",
+            "tree_transform_to_mcw_wcm_prompt"
+        ],
+        "optimize_prompt": false,
+        "extract_levels": true,
+        "extract_conditions": true,
+        "map_conditions_to_levels": true,
+        "map_categories": true,
+        "transform_category_mapping": true,
+        "tree_chunk_size": 1,
+        "transfrom_chunk_size": 3,
+        "prompt_file": "prompts\\mufg_iContract_with_chain_prompt.txt",
+        "file_path": "uploads/MUFG.xlsx",
+        "header_rows": 1,
+        "data_start_row": 2,
+        "chaining": true,
+        "note": "MUFG iContract - Approval Workflow",
+        "num_rows": 13,
+        "sheet_name": "Approval Workflow"
+    }
+}

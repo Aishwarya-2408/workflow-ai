@@ -1,0 +1,115 @@
+Given the input_JSON, your task is to generate an dictionary of key value pairs from Condition based on specific rules.  
+Do not generate code and only provide dictionary of key value pairs without explanation.
+#Ensure consistency guidelines as mentioned below:
+
+
+Few examples for reference are listed below:
+Example 1: 
+###  Example Input JSON
+```json 
+{
+        "index": "0",
+        "Condition ID": "WC000001",
+        "Currency": "€",
+        "Document": "AWARD",
+        "Condition": "EventType=RFQ||RFP||RFI&&TypeofPurchase=Outsourcing&&AwardCost<=200000",
+        "Status": "active",
+        "Description": "Condition for Outsourcing AWARD"
+    }
+```
+
+### Reference Example Output JSON of of above example input json:
+```json
+
+{
+	"index": "1",
+	"Condition ID": "WC000002",
+	"dict": {
+		"key1": "EventType",
+		"value1": "RFQ",
+		"key2": "EventType",
+		"value2": "RFP",
+		"key3": "EventType",
+		"value3": "RFI",
+		"key4": "TypeofPurchase",
+		"value4": "Outsourcing",
+		"key5": "AwardCost",
+		"value5": "<=200000"
+	}
+}
+
+```
+
+
+Example 2:
+
+#
+```json
+{
+        "index": "5",
+        "Condition ID": "WC000005",
+        "Currency": "PHP",
+        "Document": "AWARD",
+        "Condition": "ContractType-Seller&&ContractSubType-All&&SellerBusinessUnit-Unifi States&&State=Terengganu&&TypeofPurchase=Outsourcing&&&&200000<AwardCost<=2000000&&€-Euros",
+        "Status": "active",
+        "Description": ""
+    }
+```
+
+
+### Reference Example 2 Output JSON of above example input json:
+```json
+
+{
+	"index": "5",
+	"Condition ID": "WC000005",
+	"dict": {
+		"key1": "ContractType",
+		"value1": "Seller",
+		"key2": "ContractSubType",
+		"value2": "All",
+		"key3": "SellerBusinessUnit",
+		"value3": "UnifiStates",
+		"key4": "State",
+		"value4": "Terengganu",
+		"key5": "TypeofPurchase",
+		"value5": "Outsourcing",
+		"key6": "AwardCost",
+		"value6": ">200000",
+		"key7": "AwardCost",
+		"value7": "<=2000000",
+		"key8": "€",
+		"value8": "Euros"
+	}
+}
+
+```
+
+### Task Instructions
+1. Extract values from the input_JSON:
+	- `index`
+    - `Condition ID`
+	
+2. For each condition in the Condition field:
+	- Split the condition on && to separate multiple conditions.
+	- For each separated condition:
+		- Split the condition on = and - to separate the key and value.
+		- If the value contains ||, split it into multiple values and create a key-value pair for each value as shown in reference example 1
+		- Add the key-value pair to the dict list.
+	- list of key-value pairs in dict should be distinct.
+	
+2.Generate Output_JSON Structure:
+	- Create an entry with:
+	 "index": Value of index
+	 "Condition ID": Value of Condition ID.
+	 "dict": dict structure determined in step 2.
+	
+	
+3. Mandatory: Don't generate any additional data apart from given input.That will cause inconsistency in output.
+   
+
+### Input_JSON
+
+```json
+$json_data
+```

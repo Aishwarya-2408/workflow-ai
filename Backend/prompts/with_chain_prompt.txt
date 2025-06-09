@@ -1,0 +1,192 @@
+For this data extract a json which has all the levels in it.
+Example:-
+{
+"L0":{
+"name": "C&P CBU Director",
+"description": "<Some basic description about this (single line) (The 1st level, 2nd level, etc and there some basic meaning as per the name and level.)>"
+},
+"L1":{....},
+.....
+}
+
+L0 is the lowest level and with further levels being higher (in authority and approval amount, critical decisions).
+
+
+
+---
+Now fetch all the conditions from this data in a json format.
+Example:-
+{
+condition1: {
+"type": "yearlyContractValue",
+"range": "0-3 million",
+"description": "Yearly contract value: 0-3 million"
+},
+condition2: {
+"type": "contractValueAndDuration",
+"value": ">5M",
+"duration": ">2Y",
+"description": "All  contracts >5M and >2Y"
+},
+condition3: {"type": "contractDuration",
+"duration": "> 5Y",
+"description": "All contracts >5Y"
+}
+condition4: {......},
+......
+}
+
+Similarly do extract all the unique conditions.
+There might be a single sentence having multiple conditions separated by 'or' or '+' or '/' or similar.
+There might be some that are related like having 'and' or similar thing showing relation.
+
+
+
+---
+Task Overview
+For each extracted condition, determine:
+1. The highest level that fully satisfies the condition.
+
+Important Rules
+1. Consider the entire condition description.
+    1.1. If a condition contains multiple criteria joined by words like "and", "+", "or", or "/", evaluate all criteria together to determine the correct level(s).
+    1.2. Do not assign levels based on individual parts of a combined condition.
+2. Use only the provided conditions.json to map conditions to levels.
+    2.1. Do not derive mappings based on assumptions.
+    2.2. Only assign levels that fully match a condition as defined in Conditions JSON.
+
+Output Format:
+The output must be valid JSON in this structure:
+{
+  "condition1": ["L0"],  // Example: condition1 maps to level L0
+  "condition2": ["L2"]  // Example: condition2 maps to L2 (highest matching level)
+  "condition3": ["L5"]  // Example: condition3 maps to L5 (highest matching level)
+  ...
+}
+Each condition is mapped to only its highest matching level.
+
+Handling Combined Conditions
+Each distinct numerical range or contract duration should be treated as a separate condition, even if they appear within the same description.
+For example, consider this condition:
+    "Yearly contract value: >10 million - ≤25 million + All contracts >5M and >2Y + All contracts >5Y"
+This should be split into three separate conditions:
+1. Yearly contract value: >10 million - ≤25 million
+2. All contracts >5M and >2Y
+3. All contracts >5Y
+Each of these conditions should be independently mapped to its single highest matching level.
+
+Selecting the Correct Level
+1. Start from the highest possible level (e.g., L5) and work downward
+2. Assign the first (highest) level that fully satisfies the condition
+3. Once a matching level is found, stop searching - do not include lower levels
+4. Only include levels that fully satisfy the condition as defined in Conditions JSON
+
+Example:
+Given this JSON entry:
+"condition100": {
+    "type": "contractDuration",
+    "duration": ">5Y",
+    "description": "All contracts >5Y"
+}
+Correct Mapping: Only assign levels that explicitly satisfy "All contracts >5Y".
+Incorrect Mapping: Do not assign a level if the condition is combined with unrelated criteria or similar criteria but combined with another condition or paramter. (e.g., "Yearly contract value: >50 million + all contracts >10M and >5Y").           
+So the Mapping should be done properly. Segerate each condition in the data as joined (has 'and', '-' or similar things) or individual (has 'or', '+' or similar things) so it will be easy to map as per the Conditions JSON and Levels JSON given below.
+
+Hint for Evaluation:
+Start checking from the highest level and work downward to identify the highest level that matches each condition.
+
+NOTE:-
+Each level should be considered from the last (highest level) to start (lowest level).
+If any level matches then use that matched level.
+The final output must be valid JSON with no additional explanatory text.
+
+
+
+---
+I have also provided the 'Conditions JSON' and 'Condition-Level Mapping' to refer as context for the given data.
+Now as we have the conditions and the levels as well which are needed for that condition, make a json of categorymapping.
+So it will be like:-
+{
+    "Region": { // e.g., NORAM
+        "Direct/Indirect" : { // e.g., Direct
+            "Category1": {  // e.g., "PACKAGING MATERIALS - Packaging"
+                "SubCategory1": {  // e.g., "BRICKS"
+                    {"condition-description": [  // e.g. Yearly contract value: >25 million - =50 million (You will get this from conditions json)
+                            {
+                                "user": <email-id from data>,
+                                "label": "<Name from data>"
+                            },
+                            {
+                                "user": <email-id from data>,
+                                "label": "<Name from data>"
+                            } // So there can be multiple users for a condition, this will be getting by the Condition-Level Mapping json.
+                        ]
+                    }
+                },
+                "SubCategory2": {  // e.g., "BIG BAGS"
+                    {"condition-description": [
+                        {
+                            "user": <email-id from data>,
+                            "label": "<Name from data>"
+                        }
+                    ]
+                }
+                },
+            },
+            "Category2": {  // e.g., "RAW MATERIALS - FOOD"
+                "SubCategoryA": {
+                    {"condition-description": [
+                            {
+                                "user": <email-id from data>,
+                                "label": "<Name from data>"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}
+
+Note:-
+In data if for any column the value is Missing or NaN or pd.NA or Null/null or NA or N/A or None or Not Available or Empty then use them as N/A, dont skip it.
+Don't take the next column value ever.
+Don't skip any condition provided in the Conditions JSON.
+Only use the conditions specified in Conditions JSON, don't make new of mix different conditions.
+Have all the users for a condition as per the Condition-Level Mapping, dont skip any user.
+
+
+
+---
+Now with this below data I want to do some data transformation.
+So the expected output will be like:-
+{
+"Condition": "Select_your_Region_to_request_approval=NORAM&&Select_DirectIndirect_Contract=DIRECT&&Select_the_Level_1_Macro_Category=PACKAGINGMATERIALS-Packaging&&Select_the_Level_2_Cost_Category=BRICKS&&Contract_Annual_Value_converted_Original>3000000&&Contract_Annual_Value_converted_Original<=10000000"
+"User Rule": {
+"user": "jennifer.petibon@danone.com",
+"label": "Jennifer Petibon"
+},
+{
+"user": "vincent.mainguet@danone.com",
+"label": "Vincent Mainguet"
+}
+}
+
+So in condition we have certain keys for which value needs to be filled by the json we have (I will provide again below).
+The keys are:-
+Select_your_Region_to_request_approval -> It means the region of that commodity   // e.g., NORAM
+Select_DirectIndirect_Contract -> It means the value there is in data, whether direct or indirect    // e.g., Direct
+Select_the_Level_1_Macro_Category -> It means the Category   // e.g., "PACKAGING MATERIALS - Packaging"
+Select_the_Level_2_Cost_Category -> It means the SubCategory   // e.g., "BRICKS"
+Contract_Annual_Value_converted_Original -> It means the yearlyContractValue (Here there can be less then and greater then both or any one as per our range) (Note convert the value to full number like >3 Million to >3000000, to 10 million, or -10 million to < 10000000, or 5M to 5 million, etc
+
+Each condition id has can have one or more then 1 user rule, but can only have one condition.
+So its like for each condition we have one condition id.
+
+
+
+---
+I have also provided the 'Conditions JSON' and 'Condition-Level Mapping' to refer as context for the given data.
+Now as we have the conditions and the levels as well which are needed for that condition, make a complete detailed json by using both the data.
+So, essentially you just need to specify the actual level name value instead of the given level key in the Condition-Level Mapping and also replace the condition key with the actual condition value.
+I want this to be in proper flow, so arrange the json in a way that we have proper flow of approval process.

@@ -1,0 +1,140 @@
+Given the Input_extract , your task is to configure valid structured JSON data based on specific rules. Provide Output_JSON without explanation.
+
+    ### Strict Extraction Rules:  
+    1. **Identify start point and Ensure that every condition is accurately identified and processed.Ensure that no additional conditions are introduced.
+    2. **Ensure correct sequencing** of conditions and approvers.
+    3. **Preserve all text values exactly as they appear**—no modifications, no synonym replacements, and no reordering.
+    4. **When dealing with flowcharts, Track only "YES" transitions** at decision points.
+    5. **Identify all unique paths leading to "Approval"** while maintaining their exact structure and order.
+    6. **When analyzing flowchart's Data, If a "YES" transition line contains decision point text beyond yes and no, treat it as a part of condition and merge it with `<condition_text>`.
+    7. **Do not skip any approver.
+
+
+    ### **Expected Output Format (Strict JSON Structure)**
+    The response **must be a structured JSON array**, where each path follows the format:  
+    ```json
+    [
+        {
+            "index": "#",
+            "Condition Serial No.": "WC###",
+            "1_Metadata_Condition": "<condition_1>",
+            "Approver_Level_1": "<approver_1>",
+            "2_Metadata_Condition": "<condition_2>",
+            "Approver_Level_2": "<approver_2>",
+            ...
+        }
+    ]
+    
+    ### **Example  - Input_extract of Flowchart**
+        ### Conditions and Approvers List with Transitions:
+
+        1. **Start:** Submit for Item verification
+        - **Approver:** Item approver 
+        - **Condition:** leads to (Item cost <  threshold)
+        - **Transition:** 1
+
+        2. **Condition:** Item cost <  threshold
+        - **Approver:** Yes (leads to Requisition approved)
+        - **Transition:** 2
+
+        3. **Condition:** Item cost <  threshold
+        - **Approver:** No
+        - **Transition:** Leads to Billing type
+
+        4. **Condition:** Billing type
+        - **Approver:**
+            - Manufacturing: Item Manufacturing Centre
+            - Selling : Selling Unit
+            - Packaging: Packaging Centre
+            - Payment: Payment gateway Authority
+        - **Transition:** 3
+
+        5. **Condition:** Unit1 < threshold 1st approver
+        - **Approver:** Yes (leads to Requisition approved)
+        - **Transition:** 4
+
+        6. **Condition:** Unit1 < threshold 1st approver
+        - **Approver:** No
+        - **Transition:** Leads to Customer with required threshold
+
+        7. **Condition:** Unit1 > Old threshold
+        - **Approver:** No or N/A (leads to Requisition approved)
+        - **Transition:** 5
+
+        8. **Condition:** Unit1 > Old threshold
+        - **Approver:** Customer assigned to 4s approval
+        - **Transition:** Leads to Requisition approved
+
+
+        ### Transition Values:
+        - From "Submit for Item verification" to "Item approver "
+        - From "Item approver " to "Item cost <  threshold"
+        - From "Item cost <  threshold" (YES) to "Requisition approved"
+        - From "Item cost <  threshold" (NO) to "Billing type"
+        - From "Billing type" to respective approvers based on type (Manufacturing, Selling, Packaging, Payment)
+        - From "Unit1 < threshold 1st approver" (YES) to "Requisition approved"
+        - From "Unit1 < threshold 1st approver" (NO) to "Customer with required threshold"
+        - From "Customer with required threshold" to "Unit1 > Old threshold"
+        - From "Unit1 > Old threshold" (NO or N/A) to "Requisition approved"
+        - From "Unit1 > Old threshold" (YES) to "Customer assigned to 4s approval"
+        - From "Customer assigned to 4s approval" to "Requisition approved"
+
+    ### **Reference Example Output_JSON of above example Input_Image_extract:**
+    ```json
+    [
+        {
+            "index": "1",
+            "Condition Serial No.": "WC001",
+            "1_Metadata_Condition": "Submit for Item verification",
+            "Approver_Level_1": "Item approver",
+            "2_Metadata_Condition": "Item cost <  threshold",
+            "Approver_Level_2": "Requisition approved"
+        },
+        {
+            "index": "2",
+            "Condition Serial No.": "WC002",
+            "1_Metadata_Condition": "Billing type - Manufacturing",
+            "Approver_Level_1": "Item Manufacturing Centre",
+            "2_Metadata_Condition": "Unit1 < threshold",
+            "Approver_Level_2": "Requisition approved"
+        },
+        {
+            "index": "3",
+            "Condition Serial No.": "WC003",
+            "1_Metadata_Condition": "Billing type - Selling",
+            "Approver_Level_1": "Selling Unit",
+            "2_Metadata_Condition": "Unit1 < threshold",
+            "Approver_Level_2": "Requisition approved"
+        },
+        {
+            "index": "4",
+            "Condition Serial No.": "WC004",
+            "1_Metadata_Condition": "Billing type - Packaging",
+            "Approver_Level_1": "Packaging Centre",
+            "2_Metadata_Condition": "Unit1 < threshold",
+            "Approver_Level_2": "Requisition approved"
+        },
+        {
+            "index": "5",
+            "Condition Serial No.": "WC005",
+            "1_Metadata_Condition": "Billing type - Payment",
+            "Approver_Level_1": "Payment gateway Authority",
+            "2_Metadata_Condition": "Unit1 < threshold",
+            "Approver_Level_2": "Requisition approved"
+        },
+        {
+            "index": "6",
+            "Condition Serial No.": "WC006",
+            "1_Metadata_Condition": "Unit1 > Old threshold",
+            "Approver_Level_1": "Customer assigned to 4s approval",
+            "Approver_Level_2": "Requisition approved"
+        }
+
+    ]
+
+### Input_extract
+
+
+```json
+$workflow_data
+```

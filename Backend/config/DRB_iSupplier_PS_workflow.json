@@ -1,0 +1,70 @@
+{
+    "DRB_iSupplier_PS_20250505_113255": {
+        "prompts": [
+            "level_prompt",
+            "condition_prompt",
+            "condition_level_mapping_prompt",
+            "named_tree_prompt",
+            "tree_transform_to_mcw_wcm_prompt"
+        ],
+        "optimize_prompt": false,
+        "extract_levels": true,
+        "extract_conditions": true,
+        "map_conditions_to_levels": true,
+        "map_categories": true,
+        "transform_category_mapping": true,
+        "tree_chunk_size": 1,
+        "transfrom_chunk_size": 3,
+        "prompt_file": "prompts\\drb_iSupplier_ps_prompt.txt",
+        "file_path": "uploads/DRB.xlsx",
+        "header_rows": 1,
+        "data_start_row": 2,
+        "chaining": true,
+        "note": "DRB iSupplier Potential Suppliers.",
+        "num_rows": 18,
+        "sheet_name": "Approval Workflow Potential Sup",
+        "mcw_id": "ALT0001",
+        "mcw_title": "SIM Approval Workflow",
+        "mcw_process": "SIM_CREATE_POTENTIAL_SUPPLIER",
+        "wcm_start_condition_id": "WC00000",
+        "wcm_currency": "RM",
+        "wcm_document": "SIM_CREATE_POTENTIAL_SUPPLIER",
+        "wcm_condition_keys": [
+            "Subsidiary"
+        ]
+    },
+    "DRB_iSupplier_PS_20250505_113325": {
+        "prompts": [
+            "level_prompt",
+            "condition_prompt",
+            "condition_level_mapping_prompt",
+            "named_tree_prompt",
+            "tree_transform_to_mcw_wcm_prompt"
+        ],
+        "optimize_prompt": false,
+        "extract_levels": true,
+        "extract_conditions": true,
+        "map_conditions_to_levels": true,
+        "map_categories": true,
+        "transform_category_mapping": true,
+        "tree_chunk_size": 1,
+        "transfrom_chunk_size": 3,
+        "prompt_file": "prompts\\drb_iSupplier_ps_prompt.txt",
+        "file_path": "uploads/DRB.xlsx",
+        "header_rows": 1,
+        "data_start_row": 2,
+        "chaining": true,
+        "note": "DRB iSupplier Potential Suppliers.",
+        "num_rows": 18,
+        "sheet_name": "Approval Workflow Potential Sup",
+        "mcw_id": "ALT0001",
+        "mcw_title": "SIM Approval Workflow",
+        "mcw_process": "SIM_CREATE_POTENTIAL_SUPPLIER",
+        "wcm_start_condition_id": "WC00000",
+        "wcm_currency": "RM",
+        "wcm_document": "SIM_CREATE_POTENTIAL_SUPPLIER",
+        "wcm_condition_keys": [
+            "Subsidiary"
+        ]
+    }
+}

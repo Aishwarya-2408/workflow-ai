@@ -1,0 +1,11 @@
+Read Excel Files:
+	input files end with {suffix}.xlsx 
+	Consider  "{sheetname}" sheet in input files
+	Confirm the columns "{column1, column2,...etc}" exist in the input files.
+        Remove all special characters from the {column_name}. This include:
+            Periods .
+            Hyphens -
+            Any other punctuation symbols
+	    Do not remove spaces.
+	Process the input files one by one
+Save the output files as {input_filename}.xlsx 

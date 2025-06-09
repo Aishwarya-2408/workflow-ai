@@ -1,0 +1,141 @@
+Given the input_JSON, your task is to generate an Output_JSON based on specific rules.  
+Do not generate code and only provide Output_JSON without explanation.
+#Ensure consistency guidelines as mentioned below:
+
+1. symbols like <,>,= must not be replaced by words like greater than , less than , equal to.
+2. text like less than, greater than, equal to must be replaced with symbols like <,>,=.
+3. Condition like {Contract Type - Seller \r\n Contract Sub Type - All \r\n Seller Business Unit-Unifi States \r\n State:Terengganu} must consistently processed to {ContractType = Buyer \r\n Contract SubType = one \r\n SellerBusinessUnit=India \r\n State=Maharastra}.
+4. Condition like {Above P 200k - P =2M\r\n} should not be changed as it alread have key=value format.
+5. Currency symbols must be retained as it, example $, €.  eg symbols like € should not be replaced with u20ac.
+
+
+Few examples for reference are listed below:
+Example 1: 
+###  Example Input JSON
+```json 
+{
+		"index": "0",
+        "Workflow Serial No.": "WF1",
+        "Module": "iSource",
+        "Process Type": "AWARD",
+        "Condition Serial No.": "WC000001",
+        "Currency": "€",
+        "Workflow Initiator": "Procurement Buyer",
+        "1_Metadata_Conditions": "Event Type to be RFQ or RFP or RFI",
+        "2_Metadata_Conditions": "Type of Product / Service to be Outsourcing",
+        "3_Metadata_Conditions": "Award Cost -",
+        "4_Metadata_Conditions": "up to =200k",
+		"5_Metadata_Conditions":"€ - Euros",
+		"6_Metadata_Conditions":"Select_DirectIndirect_Contract to be DIRECT COST",
+		"7_Metadata_Conditions":"Contract_Annual_Value_in_EURO > 0",
+		"8_Metadata_Conditions":"Contract_Annual_Value_in_EURO > 3000000",
+		"9_Metadata_Conditions":"Contract_Annual_Value_in_EURO > 10000000",
+		"10_Metadata_Conditions":"Contract_Annual_Value_in_EURO > 5000000 \n Provide_the_term_of_your_contract_in_Months>36"
+		"12_Metadata_Conditions":"Contract_Annual_Value_in_EURO > 25000000"
+        "Approver_Level_1": "Reporting Manager",
+        "Approver_Level_2": "Section Head",
+        "Approver_Level_3": "Procure Unit Head",
+        "Approver_Level_4": "Procure Department Head"
+}
+```
+
+### Reference Example Output JSON of above example input json:
+```json
+{
+	"index": "0",
+    "Condition ID": "WC000001",
+    "Currency": "€",
+    "Document": "AWARD",
+    "Condition": "EventType=RFQ||RFP||RFI&&Type of Product Service = Outsourcing&&AwardCost <= 200000&&€-Euros&&Select_DirectIndirect_Contract = DIRECT COST&&Contract_Annual_Value_in_EURO>0&&Contract_Annual_Value_in_EURO>3000000&&Contract_Annual_Value_in_EURO>10000000&&Contract_Annual_Value_in_EURO > 5000000&&Provide_the_term_of_your_contract_in_Months>36&&Contract_Annual_Value_in_EURO > 25000000",
+    "Status": "active",
+    "Description": ""
+}
+```
+
+		
+Example 2:
+
+#
+```json
+{
+	"index": "1",
+    "Workflow Serial No.": "WF2",
+    "Module": "iSource",
+    "Process Type": "PUBLISH",
+    "Condition Serial No.": "DEFAULT",
+    "Currency": "PHP",
+    "Workflow Initiator": "Procurement Buyer",
+	"Description": "condition for outsourcing",
+    "Approver_Level_1": "Admin"
+}
+```
+
+
+### Reference Example 2 Output JSON of above example input json:
+```json
+
+{    
+	 "index": "1",
+	 "Condition ID": "DEFAULT",
+	 "Currency": "PHP",    
+	 "Document": "PUBLISH", 
+	 "Condition": "",
+	 "Status": "active",
+	 "Description": "condition for outsourcing"}
+```
+
+
+### Output_JSON Structure
+```json
+{
+	"index": "<string: index from the input_JSON>",
+    "Condition ID": "<string: Condition Serial No. from the input_JSON>",
+    "Currency": "<string: Currency from the input_JSON>",
+    "Document": "<string: Process Type from the input_JSON>",
+    "Condition": "<string: Concatenated Metadata_Conditions with && and replacing 'or' with '||'>",
+    "Status": "active",
+    "Description": "<string: value of Description variable constructed in step 2>"
+}
+```
+
+### Steps to Generate Output_JSON
+1. **Extract Values**:
+   - index: `index`
+   - Condition ID: `Condition Serial No.`
+   - Currency: `Currency`
+   - Document: `Process Type`
+   - Description: `Description`
+   
+2. if 'Condition Serial No.' in input_JSON is 'DEFAULT' do not generate Output_JSON. skip that input_JSON and go to next
+   
+3. **Construct Condition**:
+	- Convert each occurrence of 'to be' to '=' in the Metadata_Conditions . 
+    - replace any instance of an equal sign (`=`) followed by one or more spaces with an equal sign without spaces.
+	- Ensure that the key on the left-hand side of the "=" symbol does not contain "/" character. If space and "/" are present, remove them.
+	- If key on the left-hand side of the "=" symbol contains "_" character, retain them as it is.
+	- Concatenate all metadata conditions with "&&" only.
+	- Replace "or" with "||" in the concatenated string.
+	- Preserve spaces within values on the right-hand side of "=".
+	- preserve order and values in condition Example[Metadata_Condition = "Contract_Annual_Value_in_EURO>50000000 \n Provide_the_term_of_your_contract_in_Months>36" should be processed as "Contract_Annual_Value_in_EURO>50000000&&Provide_the_term_of_your_contract_in_Months>36" and not "3000000<Contract_Annual_Value_in_EURO<=50000000&&Provide_the_term_of_your_contract_in_Months>36"].
+
+   
+4. **Special handling of metadata condition**:
+   - After concatenating all metadata conditions with "&&", iterate through each condition and check if the following conditions are met:
+	   - Previous condition ends with a hyphen (without any characters after the hyphen)
+	   - Current condition starts with a keyword (e.g., "up to =", "Above P", "below B", "P", "AwardCost -").
+   - If the above conditions are met:
+	   - Extract the value from the current condition (e.g., "200k" in "up to = 200k").
+	   - Convert the value to a numeric value by removing "K" or "M" and multiplying by 1000 or 1000000, respectively.
+   - Replace the two conditions with a single condition based on the current condition's keyword:
+	   - "up to =": <previous_key><extracted_value>
+	   - "Above P" or "below B" or "P" or "AwardCost -": <extracted_value><<previous_key><extracted_value>
+
+5. Mandatory: Don't generate any additional data apart from given input.That will cause inconsistency in output.
+
+
+
+### Input_JSON
+
+```json
+$json_data
+```

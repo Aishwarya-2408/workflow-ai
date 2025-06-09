@@ -1,0 +1,27 @@
+{
+    "MUFG_iSource_QS_Publish_20250404_165040": {
+        "prompts": [
+            "level_prompt",
+            "condition_prompt",
+            "condition_level_mapping_prompt",
+            "named_tree_prompt",
+            "tree_transform_to_mcw_wcm_prompt"
+        ],
+        "optimize_prompt": false,
+        "extract_levels": true,
+        "extract_conditions": true,
+        "map_conditions_to_levels": true,
+        "map_categories": true,
+        "transform_category_mapping": true,
+        "tree_chunk_size": 1,
+        "transfrom_chunk_size": 3,
+        "prompt_file": "./prompts/workflow_prompts.txt",
+        "file_path": "uploads/MUFG.xlsx",
+        "header_rows": 1,
+        "data_start_row": 2,
+        "chaining": false,
+        "note": "MUFG_iSource_QS_Publish WF",
+        "num_rows": 6,
+        "sheet_name": "QS Publish Workflow"
+    }
+}

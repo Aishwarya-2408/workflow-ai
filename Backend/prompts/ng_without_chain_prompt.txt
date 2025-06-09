@@ -1,0 +1,395 @@
+For this data extract a json which has all the levels in it.
+Example:-
+{
+    "L0":{
+        "name": "BNF_Quality",
+        "description": "<Some basic description about this (single line) (The 1st level, 2nd level, etc and there some basic meaning as per the name and level.)>"
+    },
+    "L1":{
+        "name": "BNF_Proc_Manager",
+        "description": "<Some basic description about this (single line) (The 1st level, 2nd level, etc and there some basic meaning as per the name and level.)>"
+    },
+    "L2":{....},
+    .....
+}
+L0 is the lowest level and with further levels being higher (in authority and approval amount, critical decisions).
+If some approvers are of same level then add them properly within that level only with proper description of each.
+
+NOTE:-
+Approvers are base on the roles.
+The roles are as below:-
+BNF_Finance
+BNF_Finance_France
+BNF_Proc_Manager
+BNF_Procurement
+BNF_Quality
+BNF_Safety
+Europe_Engineering
+Europe_OxygenCleaning
+Europe_SafetyCriticalCommodity
+Germany_Finance
+Germany_Finance_2
+Germany_Medical
+Germany_Proc_Manager
+Germany_Procurement
+Germany_Quality
+Germany_Requesters
+Germany_Safety
+Iberia_Finance
+IBERIA_Finance_Portugal
+IBERIA_Legal
+IBERIA_Medical
+IBERIA_Medical_Espana
+IBERIA_Medical_Portugal
+IBERIA_Medical+Quality_Oximesa
+Iberia_Proc_Director
+Iberia_Proc_Manager
+Iberia_Procurement
+IBERIA_Quality
+IBERIA_Quality_Espana + Portugal
+Iberia_Requesters
+IBERIA_Safety
+Int_Sup
+iSupplier_Admin
+iSupplier_Buyer
+Italy_Finance
+ITALY_Finance 2
+Italy_Legal
+Italy_Procurement
+ITALY_Procurement_Manager
+Italy_Quality
+Italy_Safety
+ITALY_ Viewers
+LDM
+Legal
+MDM
+Medical
+NE_Finance
+NE Finance Danmark
+NE Finance Nordic
+NE Finance Norway
+NE Finance Sweden
+NE Finance UK-Ireland
+NE_Medical
+NE Medical + Quality
+NE_Proc Manager
+NE Proc Manager Nordic
+NE Proc Manager UK Ireland
+NE_Procurement
+NE Procurement Danmark
+NE Procurement Nor-Swe
+NE Procurement UK-Ireland
+NE_Quality
+NE Quality + Safety Danmark
+NE Quality + Safety Sweden
+NE Quality + Safety UK-Ireland
+NE_Safety
+NE Safety Norway
+
+Metadata used:
+Region, Facility, Category, Payment Terms, QUalification Criteria, Legal Questionnaire
+
+
+---
+Now fetch all the conditions from this data in a json format.
+Example:-
+{
+condition1: {
+"type": "yearlyContractValue",
+"range": "0-3 million",
+"description": "Yearly contract value: 0-3 million"
+},
+condition2: {
+"type": "contractValueAndDuration",
+"value": ">5M",
+"duration": ">2Y",
+"description": "All  contracts >5M and >2Y"
+},
+condition3: {"type": "contractDuration",
+"duration": "> 5Y",
+"description": "All contracts >5Y"
+}
+condition4: {......},
+......
+}
+
+Similarly do extract all the unique conditions.
+There might be a single sentence having multiple conditions separated by 'or' or '+' or '/' or similar.
+There might be some that are related like having 'and' or similar thing showing relation.
+
+NOTE:-
+ NOTE:-
+Approvers are base on the roles.
+The roles are as below:-
+BNF_Finance
+BNF_Finance_France
+BNF_Proc_Manager
+BNF_Procurement
+BNF_Quality
+BNF_Safety
+Europe_Engineering
+Europe_OxygenCleaning
+Europe_SafetyCriticalCommodity
+Germany_Finance
+Germany_Finance_2
+Germany_Medical
+Germany_Proc_Manager
+Germany_Procurement
+Germany_Quality
+Germany_Requesters
+Germany_Safety
+Iberia_Finance
+IBERIA_Finance_Portugal
+IBERIA_Legal
+IBERIA_Medical
+IBERIA_Medical_Espana
+IBERIA_Medical_Portugal
+IBERIA_Medical+Quality_Oximesa
+Iberia_Proc_Director
+Iberia_Proc_Manager
+Iberia_Procurement
+IBERIA_Quality
+IBERIA_Quality_Espana + Portugal
+Iberia_Requesters
+IBERIA_Safety
+Int_Sup
+iSupplier_Admin
+iSupplier_Buyer
+Italy_Finance
+ITALY_Finance 2
+Italy_Legal
+Italy_Procurement
+ITALY_Procurement_Manager
+Italy_Quality
+Italy_Safety
+ITALY_ Viewers
+LDM
+Legal
+MDM
+Medical
+NE_Finance
+NE Finance Danmark
+NE Finance Nordic
+NE Finance Norway
+NE Finance Sweden
+NE Finance UK-Ireland
+NE_Medical
+NE Medical + Quality
+NE_Proc Manager
+NE Proc Manager Nordic
+NE Proc Manager UK Ireland
+NE_Procurement
+NE Procurement Danmark
+NE Procurement Nor-Swe
+NE Procurement UK-Ireland
+NE_Quality
+NE Quality + Safety Danmark
+NE Quality + Safety Sweden
+NE Quality + Safety UK-Ireland
+NE_Safety
+NE Safety Norway
+
+Metadata used:
+Region, Facility, Category, Payment Terms, QUalification Criteria, Legal Questionnaire
+
+
+---
+Now, map the previously extracted conditions to the appropriate levels.  
+Each condition might map to one or more levels.  
+
+Be EXTREMELY careful to consider the ENTIRE condition description when determining the level.  
+If a condition description includes MULTIPLE criteria joined by "and", "+", "or", or "/", ALL criteria must be considered TOGETHER to determine the correct level(s).  
+Do NOT assign levels based on individual parts of a combined condition.  
+
+Output a JSON object in the following format:
+{
+  "condition1": ["L0"],  // Example: condition1 maps to level L0
+  "condition2": ["L1", "L2"], // Example: condition2 maps to levels L1 AND L2
+  "condition3": ["L3"],
+  ...
+}
+
+Treat each distinct numerical range or contract duration as a SEPARATE condition, even if they appear within the same description string. 
+For example, "Yearly contract value: >10 million - =25 million + All contracts >5M and >2Y + All contracts >5Y" should be treated as THREE separate conditions:
+1.  Yearly contract value: >10 million - =25 million
+2.  All contracts >5M and >2Y
+3.  All contracts >5Y
+
+Assign the appropriate level(s) to EACH of these SEPARATE conditions. 
+If a level's description matches ANY part of a combined condition, include that level in the mapping for the ENTIRE combined condition. 
+The output MUST be valid JSON.
+Do not include any explanatory text, only the JSON.
+
+
+
+---
+I have also provided the 'Conditions JSON' and 'Condition-Level Mapping' to refer as context for the given data.
+Now as we have the conditions and the levels as well which are needed for that condition, make a json of categorymapping.
+So it will be like:-
+{
+    "Region": { // e.g., BNF
+        "Requestor" : { // e.g., Requestor
+            "condition-description": [  // e.g. Facility = Belgium (or) Netherlands (or) France (or) CO2 AND Category = Medical products and equipment (or) Medical Services (or) IT Data Services (or) Medicines (included medical gases) (or) Contractors (or)  Trailer equipement Rental or Acquisition (or)  Audit and certification and engineering services (or) Cleaning and Pest control and Waste Treatment Services (or)  Laboratory and calibration and testing Products and Services (or) Oxygen cleaning Services and products (or) Safety Critical Commodities (or) Criogenic Vessels and tanks and others (or) Mixture & Calibration - Electronic Gases and Other Chemicals (or) Critical for operations or customers (or) Europe Engineering Projects (or) Other Category Spend higher than 100.000€ AND if Quality Part A - Quality Management System (ISO 9001) = No AND Quality Part B - Quality policy, management system, goals and commitment = No    (You will get this from conditions json)
+                {
+                    "user": "<role, automatic process, etc if not present then add 'N/A'>",
+                    "label": "<level/group/any information, if not present then add 'N/A'>"
+                },
+                {
+                    "user": "<role, automatic process, etc if not present then add 'N/A'>",
+                    "label": "<level/group/any information, if not present then add 'N/A'>"
+                } // So there can be multiple users for a condition, this will be getting by the Condition-Level Mapping json.
+            ]
+        },
+        "Requestor": {  // e.g., "Requestor"
+            "condition-description": [
+                {
+                    "user": "<role, automatic process, etc if not present then add 'N/A'>",
+                    "label": "<level/group/any information, if not present then add 'N/A'>"
+                }
+            ]
+        }
+    }
+    "Region": {  // e.g., "ITALIA"
+        "Requestor" : { // e.g., Requestor
+            "condition-description": [
+                {
+                    "user": "<role, automatic process, etc if not present then add 'N/A'>",
+                    "label": "<level/group/any information, if not present then add 'N/A'>"
+                }
+            ]
+        }
+    }
+}
+
+Note:-
+In data if for any column the value is Missing or NaN or pd.NA or Null/null or NA or N/A or None or Not Available or Empty then use them as N/A, dont skip it.
+Don't take the next column value ever.
+Don't skip any condition provided in the Conditions JSON.
+Only use the conditions specified in Conditions JSON, don't make new of mix different conditions.
+Have all the users for a condition as per the Condition-Level Mapping, dont skip any user.
+
+Important Context:
+NOTE:-
+Approvers are base on the roles.
+The roles are as below:-
+BNF_Finance
+BNF_Finance_France
+BNF_Proc_Manager
+BNF_Procurement
+BNF_Quality
+BNF_Safety
+Europe_Engineering
+Europe_OxygenCleaning
+Europe_SafetyCriticalCommodity
+Germany_Finance
+Germany_Finance_2
+Germany_Medical
+Germany_Proc_Manager
+Germany_Procurement
+Germany_Quality
+Germany_Requesters
+Germany_Safety
+Iberia_Finance
+IBERIA_Finance_Portugal
+IBERIA_Legal
+IBERIA_Medical
+IBERIA_Medical_Espana
+IBERIA_Medical_Portugal
+IBERIA_Medical+Quality_Oximesa
+Iberia_Proc_Director
+Iberia_Proc_Manager
+Iberia_Procurement
+IBERIA_Quality
+IBERIA_Quality_Espana + Portugal
+Iberia_Requesters
+IBERIA_Safety
+Int_Sup
+iSupplier_Admin
+iSupplier_Buyer
+Italy_Finance
+ITALY_Finance 2
+Italy_Legal
+Italy_Procurement
+ITALY_Procurement_Manager
+Italy_Quality
+Italy_Safety
+ITALY_ Viewers
+LDM
+Legal
+MDM
+Medical
+NE_Finance
+NE Finance Danmark
+NE Finance Nordic
+NE Finance Norway
+NE Finance Sweden
+NE Finance UK-Ireland
+NE_Medical
+NE Medical + Quality
+NE_Proc Manager
+NE Proc Manager Nordic
+NE Proc Manager UK Ireland
+NE_Procurement
+NE Procurement Danmark
+NE Procurement Nor-Swe
+NE Procurement UK-Ireland
+NE_Quality
+NE Quality + Safety Danmark
+NE Quality + Safety Sweden
+NE Quality + Safety UK-Ireland
+NE_Safety
+NE Safety Norway
+
+Metadata used:
+Region, Facility, Category, Payment Terms, QUalification Criteria, Legal Questionnaire
+
+
+---
+Now with this below data I want to do some data transformation.
+So the expected output will be like:-
+[
+    {
+        "Condition": "Region=BNF&&Requestor=Requestor&&Facility=Belgium(or)Netherlands(or)France(or)CO2&&Category=Medical products and equipment(or)Medical Services(or)IT Data Services (or) Medicines (included medical gases) (or) Contractors (or)  Trailer equipement Rental or Acquisition (or)  Audit and certification and engineering services (or) Cleaning and Pest control and Waste Treatment Services (or)  Laboratory and calibration and testing Products and Services (or) Oxygen cleaning Services and products (or) Safety Critical Commodities (or) Criogenic Vessels and tanks and others (or) Mixture & Calibration - Electronic Gases and Other Chemicals (or) Critical for operations or customers (or) Europe Engineering Projects (or) Other Category Spend higher than 100.000€&&Quality Part A - Quality Management System (ISO 9001)=No&&Quality Part B - Quality policy management system, goals and commitment=No",
+        "User Rule": [
+            {
+            "user": "BNF_Quality",
+            "label": "Quality Approvers"
+            }
+        ]
+    },
+    {
+        "Condition": "Region=BNF&&Requestor=Requestor&&Facility=Belgium(or)Netherlands(or)...&&Category=Medical products and equipment(or)Medical Services(or).....&& Health & Safety - Year 3 - Lost Time Injury Incidence Rate ( (B/D)x1.000.000)=More than 7.5&&Category=Contractors",
+        "User Rule": [
+            {
+                "user": "BNF_Safety",
+                "label": "Safety and Legal Approvers"
+            }
+        ]
+    },
+    {.....},
+    .....
+]
+
+So in condition we have certain keys for which value needs to be filled by the json we have (I will provide again below).
+The keys are as follow:
+Region -> It means the Region   // e.g., BNF
+Requestor -> It means the Requestor    // e.g., Requestor
+Facility -> It means the Facility, it can have multiple Facility seperated by 'or', '+', ',', etc.  // e.g., Belgium(or)Netherlands(or)France(or)CO2
+Category -> It means the Category, it can have multiple Category seperated by 'or', '+', ',', etc.  // e.g., Medical products and equipment(or)Medical Services(or)....
+Select_the_Level_2_Cost_Category -> It means the SubCategory   // e.g., "BRICKS"
+Contract_Annual_Value_converted_Original -> It means the yearlyContractValue (Here there can be less then and greater then both or any one as per our range) (Note convert the value to full number like >3 Million to >3000000, to 10 million, or -10 million to < 10000000, or 5M to 5 million, etc)
+
+If anything comes beyond this keys then generate/use appropriate keys as per the condition/parameter, but make sure not to skip anything just because it was not in the keys list.
+
+Each condition id has can have one or more then 1 user rule, but can only have one condition.
+So its like for each condition we have one condition id.
+
+Note:- Write the complete condition, dont skip any part of it.
+
+
+
+---
+I have also provided the 'Conditions JSON' and 'Condition-Level Mapping' to refer as context for the given data.
+Now as we have the conditions and the levels as well which are needed for that condition, make a complete detailed json by using both the data.
+So, essentially you just need to specify the actual level name value instead of the given level key in the Condition-Level Mapping and also replace the condition key with the actual condition value.
+I want this to be in proper flow, so arrange the json in a way that we have proper flow of approval process.

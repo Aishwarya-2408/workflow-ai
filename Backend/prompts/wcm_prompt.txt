@@ -1,0 +1,185 @@
+I have a structured file containing workflow-related information. 
+Your task is to analyze the file and generate a structured JSON output that categorizes each column based on its purpose. 
+The output should help in building an approval workflow by clearly distinguishing conditions, approvers, and other relevant data points.
+
+The Output Format JSON response should follow this structure:
+{
+  "condition": "<Key-Value String>",  // Concatenated key-value pairs representing all column names (excluding approver columns)
+  "<Column-1>": {  
+    "Description": "<Detailed description of the column’s role based on the data in it>",  
+    "Type": "<Categorization: Condition, Approver, Approver-related, or Other>"  
+  },  
+  "<Column-2>": {  
+    "Description": "...", 
+    "Type": "..."
+  },
+  ...
+}
+
+Categorization Rules:
+Use exact column names as in the data.
+Only use column that are present in the file, dont make new or assume new columns or remove any column.
+For the description make a detailed description based on the data of that header 
+If the header contains approval conditions check whther it contains multipel conditiosn or not and extract some examples.
+Each column should be assigned a type based on its role in the workflow:
+1. Condition: Defines when an approval is required (e.g., contract value, region, category).
+2. Approver: Specifies the individuals or groups responsible for approving workflows at various levels.
+3. Both: Contains both the approver as well as conditions.
+4. Approver-related: Contains metadata related to the approver(e.g., approval level, hierarchy).
+4. Other: Any column that does not fit the above categories but is relevant for workflow understanding.
+
+Key-Value String Format (Excludes Approvers):
+1. Generate a key-value string where only non-approver column names are converted into:
+    <column_name>=<Readable Column Name>
+2. The pairs should be concatenated using &&.
+3. Approver-related columns should NOT be included in the key-value string.
+3. Example output:
+    Workflow_Name=Workflow Name&&Contract_type=Contract type&&...
+
+Consider an example:-
+Example Output (JSON Response):
+{
+  "Name": {
+    "Description": "Defines the workflow process for contract approvals.",
+    "Type": "Other"
+  },
+  "Budget_Type": {
+    "Description": "Specifies the type of workflow (e.g., Purchase, Service).",
+    "Type": "Condition"
+  },
+  "Level": {
+    "Description": "Indicates the hierarchy or level of approval required.",
+    "Type": "Approver-related"
+  },
+  "Approver_1_(Conditions)": {
+    "Description": "Approver and there respective conditions",
+    "Type": "Both"
+  },
+
+  "condition": "Name=Name&&Budget_Type=type&&Level=Approval Level&&Approver_1_(Conditions)=Condition"
+}
+
+Instructions:
+1. Analyze the dataset to identify column names and their meanings.
+2. Classify each column as Condition, Approver, Approver-related, Both, or Other based on its role in the workflow.
+3. Generate a well-structured JSON response that includes:
+    a. A concatenated key-value string for easy reference.
+    b. A detailed description of each column.
+    c. The type of each column for proper classification in the workflow.
+
+Additional Instructions:
+Ignore unnamed columns (Unnamed 0, Unnamed 1) from the final JSON output.
+Ensure detailed descriptions for each column, explaining its role in the workflow.
+If a column contains multiple nested conditions, mention that and provide some example conditions.
+Strictly follow the JSON format—do not include additional explanatory text.
+Ensure condition key excludes Approver.
+Only use column that are present in the file, dont make new or assume new columns or remove any column.
+
+
+
+NOTE:- 
+Dont add unamed columns in the output json and the condition string.
+Do not include any explanatory text, only the JSON.
+Strictly follow the JSON schema.
+
+
+
+---
+I have a structured file containing workflow-related information.
+The file includes various conditions that determine approval workflows and the corresponding approvers.
+Your task is to process the given file and generate structured JSON output in the specified format.
+
+Input Data:
+1. A JSON object (File Information), which provides:
+    a. A key-value string representing condition attributes (excluding approver columns).
+    b. Column descriptions and classifications (Condition, Approver, Both, Other, etc).
+    c. Eg:
+        {
+            "Column_Name": {
+                "Description": "Provide a concise description based on the column name. Be as descriptive as possible.",
+                "Type": "One of [Condition, Approver, Both, Other]"
+            }
+        }
+2. A dataset containing multiple rows, where each row represents a unique condition and its associated approvers.
+
+Expected JSON Output Format:
+For each unique condition, generate an output entry with:
+1. Condition:
+    a. Construct a key-value string using only non-approver columns from the File Information JSON.
+    b. Ensure actual data values from the dataset replace the placeholders.
+    c. Use "&&" as a delimiter between key-value pairs.
+2. User Rule:
+    a. A list of approvers associated with this condition.
+    b. Each approver must have:
+        i. "user": The main identifier (email, contact, or any unique identifier).
+        ii. "label": A descriptive label (user group or approver name). If no label is available, return "N/A".
+3. If the approver column contains special values like Auto-Approve, Auto-Reject, Auto, Automatic, Pass, Ignore, include them as a user with "label": "N/A" (CRITICAL).
+
+Processing Rules:
+1. Condition Construction:
+    a. Extract non-approver columns from the File Information JSON.
+    b. If a type of column is Both, then extract the approver/condition data very accurately by logical seperating both.
+    c. If a condition is complex or nested or joined then make single single conditions from it accurately and then add it by using 'AND' or 'OR' keyword properly.
+    b. Use only the columns present in File Info JSON to create the condition key-value string.
+    c. Replace values with actual data from the dataset.
+    d. If a column has merged cells spanning multiple rows, ensure the correct value is assigned to each row. (CRITICAL)
+2. Grouping Conditions:
+    a. Group rows by unique condition values to avoid duplicates.
+3. Approver Extraction:
+    a. Retrieve approvers from approver columns.
+    b. If multiple approvers exist, list them under "User Rule".
+    c. If a label is missing, return "N/A".
+    d. Include special values like Auto-Approve, Auto-Reject, etc., as a user with "label": "N/A".
+4. Ensure JSON Validity:
+    a. The output must be valid JSON.
+    b. Follow the given structure strictly.
+
+
+Output Format (JSON Response):
+[
+  {
+    "Condition": "Workflow_Name=<actual value>&&Contract_type=<actual value>&&Contract_Subtype=<actual value>&&Category=<actual value>&&Contract_Category=<actual value>&&Condition_Area=<actual value>&&Area_Values_on_UI=<actual value>OR<actual value>AND<actual value>&&Level=<actual value>&&Region=<actual value>",
+    "User Rule": [
+      {
+        "user": "<email>",
+        "label": "<name/group/any information, if not present then add 'N/A'>"
+      },
+      {
+        "user": "vincent.mainguet@danone.com",
+        "label": "Vincent Mainguet"
+      }
+    ]
+  },
+  {
+    "Condition": "Workflow_Name=<actual value>&&Contract_type=<actual value>&&Contract_Subtype=<actual value>&&Category=<actual value>&&Contract_Category=<actual value>&&Condition_Area=<actual value>&&Area_Values_on_UI=<actual value>&&Level=<actual value>&&Region=<actual value>",
+    "User Rule": [
+      {
+        "user": "DanielAntoni.Klebba@hlag.com",
+        "label": "User Group 1 -  Daniel , Philipp"
+      },
+      {
+        "user": "philipp.matthiessen@hlag.com",
+        "label": "User Group 1 -  Daniel , Philipp"
+      }
+    ]
+  }
+]
+
+NOTE:-
+For the value part in the condition use only the actual data not the header values.
+Have all the condition keys included in the condition, dont skip any key (this is the most CRITICAL part).
+If a column is merged like 5 rows has 1 value due to merge then have it properly, consider that for each of the 5 rows that pass through it.
+In approver as well if any column has some other value the user and label data like Auto-Approve, Auto-Reject, Auto, Automatic, Pass, Ignore, etc like this any value then also add them in User and keep label as N/A (This is also a CRITCIAL part).
+
+
+Instructions for the LLM:
+1. Analyze the dataset to identify unique conditions based on non-approver columns.
+2. Construct the condition key-value string using only non-approver columns.
+3. Extract approvers and their labels, grouping them under "User Rule". If no label exists, return "N/A".
+4. Return the final JSON output in the specified format.
+
+NOTE:- 
+Do not include any explanatory text, only the JSON.
+Strictly follow the JSON schema.
+
+

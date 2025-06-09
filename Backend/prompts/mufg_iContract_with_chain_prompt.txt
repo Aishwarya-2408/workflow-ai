@@ -1,0 +1,344 @@
+For this data extract a json which has all the levels/approvers in it.
+Example:-
+{
+    "L0":{
+        "name": "Approver 1"
+        "description": "<List of approvers>"
+    },
+    "L1":{
+        "name": "Approver 2",
+        "description": "<List of approvers>"
+    },
+    "L2":{....},
+    .....
+}
+L0 is the lowest level and with further levels being higher (in authority and approval amount, critical decisions).
+In description have the format like Roles: <list of possible roles for that approver level>
+
+Note:-
+Each level/approver role can only be one of this:
+1. Oceania Procurement HOD
+2. Oceania Compliance Team 
+3. Oceania ASO TISO
+4. Oceania Legal Team
+5. Oceania HOD
+So if there is given some other name match it semantically to one of this names only.
+Also, if any approver has (Adhoc) written then dont include that approver.
+
+Example:-
+{
+    "L0":{
+        "name": "Approver 1",
+        "description": "Oceania Compliance Team, Oceania ASO-O TISO, Oceania Legal Team, ......"
+    },
+    "L1":{
+        "name": "Approver 2",
+        "description": Oceania Legal Team, Oceania ASO TISO, Oceania Procurement HOD, Oceania Compliance Team, ........."
+    },
+    "L2":{
+        "name": "Approver 3",
+        "description": "Oceania Procurement HOD, Oceania Legal Team, Oceania HOD, Oceania Compliance Team, ........"
+    },
+    "L3":{....},
+    .....
+}
+
+CRITICAL:- 
+Make sure to have all the possible approvers are included for each level.
+If any approver has (Adhoc) written then dont include that approver.
+
+
+---
+Now fetch all the conditions from this data in a json format.
+Example:-
+{
+    condition1: {
+        "type": "conditionA",
+        "description": "APRA CPS 230 Operational Risk Management = Applicable"
+    },
+    condition2: {
+        "type": "conditionA",
+        "description": "APRA CPS 230 Operational Risk Management = NA"
+    },
+    condition3: {
+        "type": "conditionB",
+        "description": "APRA CPS 234 Information Security = Applicable"
+    },
+    condition4: {
+        "type": "conditionB",
+        "description": "APRA CPS 234 Information Security = NA"
+    },
+    condition5: {......},
+    ......
+}
+
+Similarly do extract all the unique conditions, but dont add duplicate condition (i.e. if a condition is already in the json which you extracted till now, and the same condition appears again then dont add such duplicate condition).
+There might be a single sentence having multiple conditions separated by 'or' or '+' or '/' or similar.
+There might be some that are related like having 'and' or similar thing showing relation.
+
+Note:-
+Don't add Named Actors in conditions. 
+Conditions should purely represent a condition only.
+Have proper conversion of abstrach number to whole numbers (in description as well as other paraemters wherever it will come) without currecy symbol and commas, like:
+1. If data has $2,500 then make it as 2500 
+2. If data has $10,000 then make it as 10000
+3. If data has 5M or 5m or 5 mill or 5 million then make it as 5000000
+So basically conert the abstract to whole number.
+
+If anywhere teh condition is like this format: "IF (100%xBudget-Spend) < $0"
+Then simply it like Budget < 0 
+
+
+
+---
+Now, map the previously extracted conditions to the appropriate levels.  
+Each condition might map to one or more levels.
+Thus each level can come in one or more condition, so scan the conditions properly for each level and condition. 
+
+Be EXTREMELY careful to consider the ENTIRE condition description when determining the level.  
+If a condition description includes MULTIPLE criteria joined by "and", "+", "or", or "/", ALL criteria must be considered TOGETHER to determine the correct level(s).  
+Do NOT assign levels based on individual parts of a combined condition.  
+
+Output a JSON object in the following format:
+{
+  "condition1": ["L0"],  // Example: condition1 maps to level L0
+  "condition2": ["L1", "L2"], // Example: condition2 maps to levels L1 AND L2
+  "condition3": ["L3"],
+  ...
+}
+
+Treat each distinct numerical range or contract duration as a SEPARATE condition, even if they appear within the same description string. 
+For example, "Yearly contract value: >10 million - =25 million + All contracts >5M and >2Y + All contracts >5Y" should be treated as THREE separate conditions:
+1.  Yearly contract value: >10 million - =25 million
+2.  All contracts >5M and >2Y
+3.  All contracts >5Y
+
+Assign the appropriate level(s) to EACH of these SEPARATE conditions. 
+If a level's description matches ANY part of a combined condition, include that level in the mapping for the ENTIRE combined condition. 
+The output MUST be valid JSON.
+Do not include any explanatory text, only the JSON.
+
+
+---
+You are a data transformation assistant. 
+Your task is to convert tabular data into a nested JSON structure.  
+The data represents approval workflows, and you need to organize it hierarchically.
+
+I have also provided the 'Levels JSON', 'Conditions JSON' and 'Condition-Level Mapping JSON' to refer as context for the given data.
+Objective:
+Create a JSON object that maps procurement categories and subcategories to approval conditions and the users responsible for those approvals. 
+The mapping must strictly adhere to the provided "Levels", "Conditions", "Condition-Level Mapping", and "User Data" JSON files. 
+Missing data must be handled gracefully. Correct JSON syntax is paramount.
+
+The chaining is enabled, meaning for next approver preovious approvers must be present.
+Chaining simply means say if there are 3 approvers (A1, A2, A3) with A1 lowest and A3 highest then for condition that satisfy A1 only A1 will come, for condition that satify A2 both A1 and A2 will come (as its A2 is higher), for condition that satisfy A3 the previous A1, A2 will aslo come along with A3.
+Similarly in the levels json the levels are sorted with L0 being the lowest level and with further levels being higher then previous.
+
+So it will be like:-
+{
+    "Contract Sub Type" : { // e.g., All Procurement contract subtypes except AU and NZ Confidentiality agreements
+        "Procurement Type": {  // e.g., IT, Non- IT, Both, etc
+            "conditionA-description": {  // e.g., APRA CPS 230 Operational Risk Management = Applicable   (You will get this from conditions description in Conditions JSON)
+                "conditionB-description": [  // e.g. APRA CPS 234 Information Security = NA  (You will get this from conditions description in Conditions JSON)
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Oceania Compliance Team
+                        "label": "Role"
+                    },
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Oceania Legal Team
+                        "label": "Role"
+                    },
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Oceania Procurement HOD
+                        "label": "Role"
+                    },
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Oceania HOD
+                        "label": "Role"
+                    } // dont add - Head of Oceania (Adhoc), as its an Adhoc role.
+                ],
+                "condition-description": [  // e.g. Risk Assessment Results = APRA CPS234 (Information Security)           (You will get this from conditions description in Conditions JSON)
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Oceania ASO TISO
+                        "label": "Role"
+                    },
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Oceania ASO TISO
+                        "label": "Role"
+                    },
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Procurement Head (SG)
+                        "label": "Role"
+                    },
+                    {
+                        "user": <any information, if not present then add 'N/A'>,   // e.g. Head of Department(OCN)
+                        "label": "Role"
+                    }
+                ],
+                ......
+            }
+        }
+    }
+}
+Here in place of the keys (Contract Sub Type, Procurement Type) place their actual values and dont include the keys in output json.
+
+Note:-
+Each level/approver role can only be one of this:
+1. Oceania Procurement HOD
+2. Oceania Compliance Team 
+3. Oceania ASO TISO
+4. Oceania Legal Team
+5. Oceania HOD
+So if there is given some other name match it semantically to one of this names only.
+Also, if any approver has (Adhoc) written then dont include that approver.
+
+JSON Syntax Rules (EXTREMELY IMPORTANT):
+Objects: Objects are enclosed in curly braces {}. Key-value pairs within an object are separated by commas.
+Arrays: Arrays are enclosed in square brackets []. Elements within an array are separated by commas.
+User Objects: Each user within the condition_description array must be a separate JSON object, and these objects must be separated by commas. This was the source of the previous error. For example: [ {"user": "a", "label": "b"}, {"user": "c", "label": "d"} ] is correct. [ {"user": "a", "label": "b"} {"user": "c", "label": "d"} ] is incorrect (missing comma).
+Strings: All keys and string values must be enclosed in double quotes ".
+
+Processing Instructions:
+Data Loading and Joining:
+1. Load the Levels, Conditions, and Condition-Level Mapping JSON files.
+2. The Condition-Level Mapping JSON acts as a join table. Use the level_id to link to the Levels JSON, and the condition_id to link to the Conditions JSON.
+3. Also, map the user details by matching the "user" key in Condition-Level Mapping with "role name or actual name" as in the data.
+
+Condition Mapping:
+For each level (identified by level_id in the joined data), find all matching entries in the Condition-Level Mapping.
+For each matching condition_id, retrieve the corresponding condition_description from the Conditions JSON.
+Create a key in the innermost level of the JSON (under the Department) using the condition_description.
+
+User Assignment:
+For each condition_description, create an array of user objects.
+Maintain the exact order of users as defined in the Condition-Level Mapping JSON. Each user object should have:
+1. user: The user's role name or actual name.
+2. label: The user's label telling whether user is a role or an actual name.
+Note:- Only add the user and label as per the data given, dont add anything extra or assume anything more. Just simply put whats there given in the data, no skipping or assumptions to be made.
+
+Condition values conversions:
+Have proper conversion of abstract number to whole numbers (in description as well as other paraemters wherever it will come) without currecy symbol and commas, like:
+1. If data has $2,500 then make it as 2500 
+2. If data has $10,000 then make it as 10000
+3. If data has 5M or 5m or 5 mill or 5 million then make it as 5000000
+So basically conert the abstract to whole number.
+
+Constraints and Rules (CRITICAL):
+Strict Adherence: Use only the conditions provided in the Conditions JSON. Do not create new conditions or modify existing ones.
+Complete Mapping: Include all levels from the Levels JSON, even if there are no matching conditions. Use "N/A" for missing values as described above.
+User Order: Preserve the order of users exactly as it appears in the Condition-Level Mapping JSON.
+No Data Skipping: Do not omit any data. Every level, condition (if mapped), and user (if mapped) must be present in the output.
+Data JSON: Use the User's data for the user and label in the output.
+VALID JSON: The output must be a syntactically correct JSON object. Double-check commas and brackets.
+Case Sensitivity: Use consistent capitalization for as it appears in your input Levels data.
+Hierarchy: The data must be structured hierarchically: Location -> Purchase type -> Category -> Department -> Condition -> Approver. Every level must be present, even if it's just a single "Other" category.
+Conditions: The "Condition" column should be used as the key for the innermost object. If the "Condition" is empty or "N/A", use the key "Default".
+User & Label: In user add the role name (role value) or the actual give name (named actor value) for that role and in label add whetehr its a Role or Named Actor (Dont add anything thats not in that data by any assumtions, just ensure everything in data is included, no skipping of any data and no assumptions for any data.)
+Important Node: Use the values given in Location, Purchase type, Category, Department columns as it is dont skip, change or assume anything else.
+
+Example (Illustrative):
+{
+    "All Procurement contract subtypes except AU and NZ Confidentiality agreements": {
+        "IT": {
+            "APRA CPS 230 Operational Risk Management = Applicable": {
+                "APRA CPS 234 Information Security = NA": [
+                    {
+                        "user": "Oceania Compliance Team",
+                        "label": "Role"
+                    },
+                    {
+                        "user": "Oceania Legal Team",  // closest match of the semantical meaning of Legal (~2) Oceania Legal with the given set of roles
+                        "label": "Role"
+                    },
+                    {
+                        "user": "Oceania Procurement HOD",  // closest match of the semantical meaning of Procurement HOD (~1) with the given set of roles
+                        "label": "Role"
+                    },
+                    {
+                        "user": "Oceania HOD",
+                        "label": "Role"
+                    } // dont add - Head of Oceania (Adhoc), as its an Adhoc role.
+                ]
+            },
+            "APRA CPS 230 Operational Risk Management = NA": {
+                "APRA CPS 234 Information Security = Applicable": [
+                    {
+                        "user": "Oceania ASO-O TISO",
+                        "label": "Role"
+                    },
+                    {
+                        "user": "Oceania Legal Team",
+                        "label": "Role"
+                    },
+                    {
+                        "user": "Oceania Procurement HOD",
+                        "label": "Role"
+                    },
+                    {
+                        "user": "Oceania HOD",
+                        "label": "Role"
+                    } // dont add - Head of Oceania (Adhoc), as its an Adhoc role.
+                ]
+            }
+        }
+    }
+}
+
+
+Critical:-
+Take the value as it is given for each column dont skip any value or assume 'Other' anywhere.
+Eg Data:
+Contract Sub Type, Procurement Type, Condition A: Does APRA CPS 230 Operational Risk Management apply?, Condition B: Does APRA CPS 234 Information Security apply?, Approver 1, Approver 2, Approver 3, Approver 4, Approver 5, Approver 6
+All Procurement contract subtypes except AU and NZ Confidentiality agreements, IT, Applicable, NA, Oceania Compliance Team, Legal (~2) Oceania Legal, Procurement HOD (~1), Oceania HOD, Head of Oceania (Adhoc)
+
+Here Contract Sub Type will be All Procurement contract subtypes except AU and NZ Confidentiality agreements, Procurement Type will be IT, etc.
+
+Dont skip any condition, if it is NA then have it has NA but dont skip
+Eg:
+All Procurement contract subtypes except AU and NZ Confidentiality agreements, IT, NA, NA, Legal (~2) Oceania Legal, Procurement HOD (~1), Oceania HOD, Head of Oceania (Adhoc)
+Here both NA, NA are there, but we need to include this also.
+
+---
+Now with this below data I want to do some data transformation.
+So the expected output will be like:-
+[
+    {
+        "Condition": "Location=B&T Services&&Purchase_type=Other&&Category=Accountingg&&Department=Other&&Condition=Default"
+        "User Rule": [
+            {
+                "user": "Accounting Supervisor",
+                "label": "Role"
+            }
+        ]
+    },
+    {
+        "Condition": "Location=B&T Services&&Purchase_type=Other&&Category=Accountingg&&Department=Other&&Purchase_Amount>2500"
+        "User Rule": [
+            {
+                "user": "Accounting Supervisor",
+                "label": "Role"
+            },
+            {
+                "user": "Kelly Curry",
+                "label": "Named Actor"
+            }
+        ]
+    },    
+    {.....},
+    .....
+]
+
+So in condition we have certain keys for which value needs to be filled by the json we have (I will provide again below).
+The keys are:-
+Location -> It means the location   // e.g., B&T Services
+Purchase_type -> It means the Accounting   // e.g., Other
+Category -> It means the Category   // e.g., Accountingg
+Department -> It means the Department   // e.g., Manager
+Purchase_Amount -> It means the monetaryThreshold (Here there can be less then and greater then both or any one as per our range) (Note convert the value to full number without commas and without currency symbol like >$2,500 to >2500 or <$10,000 to <10000 or 5M to 5 million, etc)
+
+If anything comes beyond this keys then generate/use appropriate keys as per the condition/parameter, but make sure not to skip anything just because it was not in the keys list.
+
+Each object has can have one or more then 1 user rule, but can only have one condition.
+NOTE:-
+Ensure to give complete conditions with each Available parameter being added in condition as per the data, dont skip any paramater that is avaiable in the given data.
+
