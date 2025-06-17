@@ -4,10 +4,13 @@ import os
 import uuid
 import json
 import traceback
-from typing import Any, Dict, List, Literal, Optional
 import base64
 import asyncio
 import threading # Use threading for background task in sync Flask
+import queue # NEW IMPORT
+import re # NEW IMPORT: For regex to extract file paths from stdout
+import zipfile # NEW IMPORT: For zipping multiple output files
+from typing import Any, Dict, List, Literal, Optional
 
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -24,7 +27,7 @@ task_store: Dict[str, Dict[str, Any]] = {}
 downloadable_files: Dict[str, str] = {}
 
 # To store paths of generated downloadable files
-stream_queues: Dict[str, asyncio.Queue] = {}
+stream_queues: Dict[str, queue.Queue] = {} # MODIFIED: Changed to queue.Queue
 
 CONFIG_FILE_NAME = "configuration.ini"
 DEFAULT_INSTRUCTION_FILENAME_PREFIX = "temp_a2a_instructions_"
@@ -84,8 +87,8 @@ def save_file_part(part: Dict[str, Any], task_id: str, workspace_root: str):
         relative_path = file_info['uri']
         # Basic sanitization against directory traversal
         if ".." in relative_path or relative_path.startswith('/'):
-            logger.error(f"Potential directory traversal attempt with URI: {relative_path}")
-            return None
+             logger.error(f"Potential directory traversal attempt with URI: {relative_path}")
+             return None
 
         resolved_path = os.path.join(workspace_root, relative_path)
         resolved_path = os.path.abspath(resolved_path)
@@ -127,7 +130,8 @@ def load_agent_config():
         "agent_log_level": logging.INFO,
         "agent_max_retries": 2,
         "agent_execution_timeout": 20,
-        "agent_log_file": "agent.log"
+        "agent_log_file": "agent.log",
+        "agent_log_folder": "LOGS"
     }
 
     if actual_config_path:
@@ -143,6 +147,7 @@ def load_agent_config():
                 log_level_str = config.get('LOG', 'log_level', fallback="INFO").upper()
                 parsed_config["agent_log_level"] = getattr(logging, log_level_str, logging.INFO)
                 parsed_config["agent_log_file"] = config.get('LOG', 'log_file', fallback=parsed_config["agent_log_file"])
+                parsed_config["agent_log_folder"] = config.get('LOG', 'log_folder', fallback="LOGS")
             print(f"Loaded A2A agent configuration from: {actual_config_path}")
         except Exception as e:
             print(f"Error reading A2A agent config '{actual_config_path}': {e}. Using defaults.")
@@ -154,11 +159,16 @@ AGENT_CONFIG = load_agent_config()
 
 # Initialize logger
 try:
-    lm = LoggingModule(log_file=AGENT_CONFIG["agent_log_file"], log_level=AGENT_CONFIG["agent_log_level"])
+    workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Getting workspace root
+    log_folder_path = os.path.join(workspace_root, AGENT_CONFIG["agent_log_folder"])
+    # os.makedirs(log_folder_path, exist_ok=True) # Ensure the log folder exists - Now handled by LoggingModule
+    # full_log_file_path = os.path.join(log_folder_path, AGENT_CONFIG["agent_log_file"])
+
+    lm = LoggingModule(log_file=AGENT_CONFIG["agent_log_file"], log_level=AGENT_CONFIG["agent_log_level"], log_folder=log_folder_path)
     logger = lm.get_logger() if hasattr(lm, 'get_logger') else lm.logger
 except Exception as e:
      print(f"Error initializing LoggingModule: {e}. Using basic logging.")
-     logging.basicConfig(level=AGENT_CONFIG["agent_log_level"])
+     logging.basicConfig(level=AGENT_CONFIG["agent_log_level"], filename=None) # Explicitly set filename to None
      logger = logging.getLogger(__name__)
 
 # Create blueprint for file processing API
@@ -166,13 +176,18 @@ def create_file_processor_blueprint():
     file_processor_api = Blueprint('file_processor_api', __name__, url_prefix='/api/v1/file-preprocessing')
 
     # Helper function to run the async main agent in a sync context
-    async def run_main_agent_for_a2a(task: Dict[str, Any], instructions_text: str, input_file_paths: List[str], stream_q: Optional[asyncio.Queue]):
+    async def run_main_agent_for_a2a(task: Dict[str, Any], instructions_text: str, input_file_paths: List[str], event_sink_q: Optional[queue.Queue]): # MODIFIED: Changed stream_q to event_sink_q (synchronous queue)
         task_id = task['id'] # Get task_id from the passed task object
 
         logger.info(f"Task {task_id}: Initializing MainAgent for A2A processing.")
         workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         original_main_agent_instruction_file = "instructions.txt"
         original_main_agent_instruction_path = os.path.join(workspace_root, original_main_agent_instruction_file)
+
+        # Create a unique output directory for this task
+        task_output_dir = os.path.join(workspace_root, DOWNLOADS_DIR, task_id)
+        os.makedirs(task_output_dir, exist_ok=True)
+        logger.info(f"Task {task_id}: Created task-specific output directory: {task_output_dir}")
 
         # Get config values
         service_account_path = AGENT_CONFIG["gcp_service_account_file"]
@@ -185,7 +200,7 @@ def create_file_processor_blueprint():
             logger.error(f"GCP service account file is not set in the config file. Please set 'service_account_json_path' under [VertexAI] in {CONFIG_FILE_NAME}.")
             current_status = {"state": "failed", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": "GCP service account file is not set in the config file. Please set 'service_account_json_path' under [VertexAI] in configuration.ini."}]}}
             task['status'] = current_status
-            if stream_q: await stream_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"})
+            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
             return
 
         try:
@@ -197,7 +212,7 @@ def create_file_processor_blueprint():
                 logger.error(f"'project_id' not found in service account file: {service_account_path}")
                 current_status = {"state": "failed", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": f"'project_id' not found in service account file: {service_account_path}"}]}}
                 task['status'] = current_status
-                if stream_q: await stream_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"})
+                if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
                 return
             if not gcp_location:
                 gcp_location = "us-central1"
@@ -205,8 +220,11 @@ def create_file_processor_blueprint():
             logger.error(f"Could not read project_id/location from service account file: {e}")
             current_status = {"state": "failed", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": f"Could not read project_id/location from service account file: {e}"}]}}
             task['status'] = current_status
-            if stream_q: await stream_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"})
+            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
             return
+
+        # Progress Update: After config and service account validation
+        if event_sink_q: event_sink_q.put({"id": task_id, "progress": 20, "message": "Input module processing complete.", "event_type": "task_progress_update"})
 
         main_agent_instance = MainAgent(
             gemini_model_name=AGENT_CONFIG["gemini_model_name"],
@@ -215,12 +233,13 @@ def create_file_processor_blueprint():
             execution_timeout=agent_execution_timeout,
             service_account_json_path=service_account_path,
             gcp_project_id=gcp_project_id,
-            gcp_location=gcp_location
+            gcp_location=gcp_location,
+            output_base_dir=task_output_dir # Pass the task-specific output directory
         )
 
-        current_status = {"state": "submitted", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": "Task submitted for processing."}]}}
+        current_status = {"state": "submitted", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": "Task submitted: Initializing agent."}]}}
         task['status'] = current_status
-        if stream_q: await stream_q.put({"id": task_id, "status": current_status, "event_type": "task_status_update"})
+        if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
 
         logger.info(f"Task {task_id}: Writing provided instructions to '{original_main_agent_instruction_path}' for MainAgent.")
         try:
@@ -230,13 +249,23 @@ def create_file_processor_blueprint():
             logger.error(f"Task {task_id}: Failed to write temporary instruction file: {e}")
             current_status = {"state": "failed", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": f"Internal error: could not prepare instructions: {e}"}]}}
             task['status'] = current_status
-            if stream_q: await stream_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"})
+            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
             return
+
+        # Progress Update: After instruction processing
+        if event_sink_q: event_sink_q.put({"id": task_id, "progress": 40, "message": "Instruction processing complete.", "event_type": "task_progress_update"})
 
         try:
             logger.info(f"Task {task_id}: Running MainAgent.run() for actual processing.")
             # Call the real agent and get the result
             result = await asyncio.to_thread(main_agent_instance.run)
+
+            # Progress Update: After code generation/execution (if successful)
+            if result.get("status") == "SUCCESS":
+                if event_sink_q: event_sink_q.put({"id": task_id, "progress": 80, "message": "Code generation and execution complete.", "event_type": "task_progress_update"})
+
+            # Log the full result for debugging
+            logger.info(f"Task {task_id}: MainAgent.run() returned result: {json.dumps(result, indent=2)}")
 
             # Map result to A2A TaskStatus and Artifact
             status_map = {
@@ -249,90 +278,131 @@ def create_file_processor_blueprint():
             }
             state = status_map.get(result.get("status", "unknown"), "unknown")
             message_text = result.get("message", "")
+            
+            # If the state is completed, and we have execution feedback, incorporate that into the final message.
+            if state == "completed" and result.get("execution_feedback"):
+                message_text += "\nExecution Feedback: " + "\n".join(result["execution_feedback"])
+
             current_status = {"state": state, "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": message_text}]}}
             task['status'] = current_status
+            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
 
             # Build artifact if code was generated
             artifacts = []
             download_url = None
             download_filename = None
 
-            # Determine the primary output content to save and make downloadable
-            output_content_to_save = None
-            output_filename = None
-
             # Prioritize saving execution stdout if available and task was successful
             if state == "completed" and result.get("execution_stdout"):
-                output_content_to_save = result["execution_stdout"]
-                output_filename = f"{task_id}_output.txt"
-                logger.info(f"Task {task_id}: Saving execution stdout as primary output.")
+                # NEW LOGIC: Extract Excel file paths from stdout
+                excel_file_paths = re.findall(r"Successfully processed '.*?\.xlsx' and saved output to '(.*?\.xlsx)'", result["execution_stdout"])
 
-            if output_content_to_save:
-                downloads_dir_abs = os.path.join(workspace_root, DOWNLOADS_DIR)
-                os.makedirs(downloads_dir_abs, exist_ok=True)
-                download_path = os.path.join(downloads_dir_abs, output_filename)
+                if excel_file_paths:
+                    downloads_dir_abs = os.path.join(workspace_root, DOWNLOADS_DIR)
+                    os.makedirs(downloads_dir_abs, exist_ok=True)
 
-                try:
-                    with open(download_path, "w", encoding="utf-8") as f:
-                        f.write(output_content_to_save)
-                    downloadable_files[task_id] = download_path # Store the path
-                    # Construct the download URL
-                    download_url = f"/api/v1/file-preprocessing/tasks/download/{task_id}"
-                    logger.info(f"Task {task_id}: Saved primary output to {download_path}. URL: {download_url}")
+                    if len(excel_file_paths) == 1:
+                        # If only one Excel file, make it directly downloadable
+                        output_path = excel_file_paths[0] # Use the path directly
+                        output_filename = os.path.basename(output_path)
+                        # Ensure the output_path is absolute and within DOWNLOADS_DIR for security
+                        resolved_output_path = os.path.abspath(output_path)
+                        # The output path should be in task_output_dir, not downloads_dir_abs directly
+                        expected_prefix = os.path.abspath(os.path.join(downloads_dir_abs, task_id))
+                        if not resolved_output_path.startswith(expected_prefix):
+                            logger.warning(f"Task {task_id}: Generated Excel file path '{output_path}' is outside expected task-specific downloads directory ('{expected_prefix}'). Skipping direct download.")
+                            output_path = None # Invalidate if not in expected dir
 
-                except Exception as e:
-                    logger.error(f"Task {task_id}: Failed to save primary output for download: {e}", exc_info=True)
-                    download_url = None # Ensure download_url is None on failure
+                        if output_path:
+                            downloadable_files[task_id] = resolved_output_path # Store the absolute path
+                            download_url = f"/api/v1/file-preprocessing/tasks/download/{task_id}"
+                            logger.info(f"Task {task_id}: Saved single Excel output to {resolved_output_path}. URL: {download_url}")
+                            if event_sink_q: event_sink_q.put({"id": task_id, "progress": 90, "message": "Excel file generation and download setup complete.", "event_type": "task_progress_update"})
+                    else:
+                        # If multiple Excel files, create a zip file
+                        zip_filename = f"{task_id}_workflow_outputs.zip"
+                        zip_filepath = os.path.join(downloads_dir_abs, zip_filename)
 
-                # Prepare artifact parts
-                artifact_parts = []
-                artifact_description = "Output from the agent"
+                        try:
+                            with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+                                for file_path in excel_file_paths:
+                                    resolved_file_path = os.path.abspath(file_path)
+                                    # Ensure the file being zipped is from the task's output directory
+                                    expected_prefix = os.path.abspath(os.path.join(downloads_dir_abs, task_id))
+                                    if resolved_file_path.startswith(expected_prefix):
+                                        zipf.write(resolved_file_path, os.path.relpath(resolved_file_path, expected_prefix)) # Save with relative path in zip
+                                        logger.info(f"Task {task_id}: Added {os.path.basename(resolved_file_path)} to zip.")
+                                    else:
+                                        logger.warning(f"Task {task_id}: Skipping zipping file '{file_path}' as it is outside expected task-specific downloads directory ('{expected_prefix}').")
 
-                # Include execution stdout/stderr as text parts
-                if result.get("execution_stdout"):
-                    artifact_parts.append({"type": "text", "text": f"Execution STDOUT:\n{result['execution_stdout']}"})
-                    artifact_description += ", including execution output"
-                if result.get("execution_stderr"):
-                    artifact_parts.append({"type": "text", "text": f"Execution STDERR:\n{result['execution_stderr']}"})
-                    artifact_description += " and errors"
+                            downloadable_files[task_id] = zip_filepath
+                            download_url = f"/api/v1/file-preprocessing/tasks/download/{task_id}"
+                            output_filename = zip_filename
+                            logger.info(f"Task {task_id}: Zipped multiple Excel outputs to {zip_filepath}. URL: {download_url}")
+                            if event_sink_q: event_sink_q.put({"id": task_id, "progress": 90, "message": "Zipped Excel files generation and download setup complete.", "event_type": "task_progress_update"})
 
-                # Include validation feedback as a text part
-                if result.get("validation_feedback"):
-                    artifact_parts.append({"type": "text", "text": f"Validation Feedback:\n{chr(10).join(result['validation_feedback'])}"})
-                    artifact_description += " and validation feedback"
+                        except Exception as e:
+                            logger.error(f"Task {task_id}: Failed to create zip file for download: {e}", exc_info=True)
+                            download_url = None
+                            output_filename = None
+                else:
+                    logger.info(f"Task {task_id}: No Excel files found in stdout to make downloadable.")
 
-                # Add a part indicating the downloadable file if successful
-                if download_url and output_filename:
-                    artifact_parts.append({"type": "text", "text": f"\nDownloadable output available: {output_filename}"}) # Simple text indicator
+            # Prepare artifact parts
+            artifact_parts = []
+            artifact_description = "Output from the agent"
 
-                # Create the artifact
-                if artifact_parts:
-                    artifact = {
-                        "name": "task_results", # Generic name
-                        "description": artifact_description,
-                        "parts": artifact_parts
-                    }
-                    # task_store[task_id]['artifacts'] = artifacts # This would overwrite existing
-                    if 'artifacts' not in task or not isinstance(task['artifacts'], list):
-                        task['artifacts'] = []
-                    task['artifacts'].append(artifact)
-                    if stream_q:
-                        await stream_q.put({"id": task_id, "artifact": artifact, "event_type": "task_artifact_update"})
+            # Include execution stdout/stderr as text parts
+            if result.get("execution_stdout"):
+                artifact_parts.append({"type": "text", "text": f"Execution STDOUT:\n{result['execution_stdout']}"})
+                artifact_description += ", including execution output"
+            if result.get("execution_stderr"):
+                artifact_parts.append({"type": "text", "text": f"Execution STDERR:\n{result['execution_stderr']}"})
+                artifact_description += " and errors"
+
+            # Include generated code as a text part if available
+            if result.get("generated_code"):
+                artifact_parts.append({"type": "text", "text": f"Generated Code:\n```python\n{result['generated_code']}\n```"})
+                artifact_description += ", including generated code"
+
+            # Include execution feedback as a text part
+            if result.get("execution_feedback"):
+                artifact_parts.append({"type": "text", "text": f"Execution Feedback:\n{chr(10).join(result['execution_feedback'])}"})
+                artifact_description += " and execution feedback"
+
+            # Add a part indicating the downloadable file if successful
+            if download_url and output_filename:
+                artifact_parts.append({"type": "text", "text": f"\nDownloadable output available: {output_filename}"})
+
+            # Create the artifact
+            if artifact_parts:
+                artifact = {
+                    "name": "task_results", # Generic name
+                    "description": artifact_description,
+                    "parts": artifact_parts
+                }
+                # task_store[task_id]['artifacts'] = artifacts # This would overwrite existing
+                if 'artifacts' not in task or not isinstance(task['artifacts'], list):
+                    task['artifacts'] = []
+                task['artifacts'].append(artifact)
+                if event_sink_q:
+                    event_sink_q.put({"id": task_id, "artifact": artifact, "event_type": "task_artifact_update"}) # MODIFIED: put to synchronous queue
 
             # Send final status update
             final_metadata = {"downloadUrl": download_url, "downloadFilename": output_filename} if download_url else {}
-            final_status_update = {"id": task_id, "status": current_status, "final": True, "metadata": final_metadata, "event_type": "task_status_update"}
-            if stream_q:
-                await stream_q.put(final_status_update)
+            final_status_update = {"id": task_id, "status": current_status, "final": True, "metadata": final_metadata, "event_type": "task_status_update", "progress": 100}
+            if event_sink_q:
+                event_sink_q.put(final_status_update) # MODIFIED: put to synchronous queue
+                logger.info(f"Task {task_id}: Successfully put final_status_update to queue.") # NEW LOG
 
             logger.info(f"Task {task_id}: MainAgent processing completed with state: {state}. Download URL included: {bool(download_url)}")
 
         except Exception as e:
             logger.error(f"Task {task_id}: Error during MainAgent execution: {e}", exc_info=True)
-            error_message_part = {"type": "text", "text": f"An unexpected error occurred during agent execution: {str(e)}"}
+            error_message_part = {"type": "text", "text": f"An unexpected error occurred during agent execution: {str(e)}!"}
             current_status = {"state": "failed", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [error_message_part]}}
             task['status'] = current_status
-            if stream_q: await stream_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update"})
+            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update", "progress": 100}) # MODIFIED: added progress: 100
         finally:
             if os.path.exists(original_main_agent_instruction_path):
                  pass
@@ -355,20 +425,29 @@ def create_file_processor_blueprint():
 
             logger.info(f"Task {task_id}: Processing finished.")
 
-    def _run_async_task_in_thread(task: Dict[str, Any], instructions_text: str, input_file_paths: List[str], stream_q: Optional[asyncio.Queue]):
+    def _run_async_task_in_thread(task: Dict[str, Any], instructions_text: str, input_file_paths: List[str], sync_stream_q: Optional[queue.Queue]): # MODIFIED: Changed signature to accept sync_stream_q
         """Helper to run an async function in a new event loop within a thread."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(run_main_agent_for_a2a(task, instructions_text, input_file_paths, stream_q))
+            loop.run_until_complete(run_main_agent_for_a2a(task, instructions_text, input_file_paths, sync_stream_q)) # MODIFIED: Pass sync_stream_q
         except Exception as e:
             logger.error(f"Task {task['id']}: Error in _run_async_task_in_thread: {e}", exc_info=True)
             task['status']['state'] = "failed"
             task['status']['timestamp'] = get_iso_timestamp()
             task['status']['message'] = {"role": "agent", "parts": [{"type": "text", "text": f"Task failed in background thread: {str(e)}"}]}
             task['error'] = str(e)
+            if sync_stream_q: # MODIFIED: Signal failure to client through sync queue
+                sync_stream_q.put({"id": task['id'], "status": task['status'], "final": True, "event_type": "task_status_update"})
         finally:
             loop.close()
+            # Always signal end of stream to the generator after the background task completes/fails
+            if sync_stream_q: # Only attempt if the queue was actually provided (i.e., for streaming tasks)
+                try:
+                    sync_stream_q.put(None) # Signal end of stream for synchronous generator
+                    logger.info(f"Task {task['id']}: Put None to sync queue in finally block.") # NEW LOG
+                except Exception as e_put:
+                    logger.warning(f"Failed to put None to sync queue in finally block: {e_put}") # NEW LOG
 
     @file_processor_api.route('/health', methods=['GET', 'HEAD'])
     def health_check():
@@ -460,18 +539,18 @@ def create_file_processor_blueprint():
         task = {"id": task_id, "sessionId": params.get('sessionId'), "status": initial_status, "metadata": params.get('metadata')}
         task_store[task_id] = task
 
-        # Run the async task in a separate thread
+        # Run the async task in a separate thread, passing None for the streaming queue
         thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instruction_text.strip(), file_paths_for_agent, None))
         thread.start()
 
         return jsonify(task)
 
     @file_processor_api.route("/tasks/sendSubscribe", methods=['POST'])
-    def file_processor_tasks_send_subscribe():
+    def file_processor_tasks_send_subscribe(): # MODIFIED: Changed from async def to def (synchronous)
         """Receives a task for the file processing workflow, initiates processing, and returns streaming updates."""
         workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-        params = request.json
+        params = request.get_json()
         if not params:
             return jsonify({'detail': 'Invalid JSON payload'}), 400
 
@@ -511,27 +590,37 @@ def create_file_processor_blueprint():
         task = {"id": task_id, "sessionId": params.get('sessionId'), "status": initial_status, "metadata": params.get('metadata')}
         task_store[task_id] = task
 
-        stream_q = asyncio.Queue()
-        stream_queues[task_id] = stream_q
+        # Create a synchronous queue for streaming events
+        sync_stream_q = queue.Queue() # MODIFIED: Use synchronous queue
+        stream_queues[task_id] = sync_stream_q
 
-        # Run the async task in a separate thread, passing the stream_q
-        thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instruction_text.strip(), file_paths_for_agent, stream_q))
+        # Start the async MainAgent task in a separate thread, passing the synchronous queue
+        thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instruction_text.strip(), file_paths_for_agent, sync_stream_q)) # MODIFIED: Pass sync_stream_q
         thread.start()
 
-        async def event_generator():
+        def event_generator(): # MODIFIED: This is now a synchronous generator
             try:
                 while True:
+                    # Get from the synchronous queue with a timeout
                     try:
-                        update_event = await asyncio.wait_for(stream_q.get(), timeout=1.0) # Poll with a timeout
-                        if update_event:
-                            event_type = update_event.pop("event_type", "message") # Get and remove event_type
-                            yield f"event: {event_type}\ndata: {json.dumps(update_event)}\n\n"
-                            if update_event.get("final"):
-                                logger.info(f"Task {task_id}: Sent final status update, closing stream.")
-                                break
-                    except asyncio.TimeoutError:
-                        yield ": keep-alive\n\n" 
-                        continue
+                        update_event = sync_stream_q.get(timeout=1.0) # MODIFIED: Synchronous get with timeout
+                        logger.debug(f"Task {task_id}: Generator received event: {update_event}") # NEW LOG
+
+                        if update_event is None: # Keep this to handle the explicit None from the producer
+                            logger.info(f"Task {task_id}: Received explicit None signal, closing stream.")
+                            break
+
+                        event_type = update_event.pop("event_type", "message")
+                        json_data = json.dumps(update_event)
+                        yield f"event: {event_type}\ndata: {json_data}\n\n"
+
+                        if update_event.get("final"):
+                            logger.info(f"Task {task_id}: Sent final status update, closing stream.")
+                            break
+                    except queue.Empty: # This exception occurs when the timeout is reached
+                        logger.debug(f"Task {task_id}: Queue empty, sending keep-alive.") # NEW LOG
+                        yield ": keep-alive\n\n" # Send a keep-alive comment
+                        continue # Continue the loop after sending keep-alive
             except Exception as e_stream:
                 logger.error(f"Error in stream for task {task_id}: {e_stream}", exc_info=True)
                 error_message_part = {"type": "text", "text": f"Streaming error: {e_stream}"}
@@ -689,7 +778,7 @@ def create_file_processor_blueprint():
         if not task:
             return jsonify({"detail": f"Task with ID '{task_id}' not found."}), 404
 
-        logger.info(f"File Processor tasks/cancel: Received tasks/cancel for task ID {task_id}.")
+        logger.info(f"File Processor tasks/cancel: Received tasks/cancel for task {task_id}.")
 
         # Basic cancellation: mark as canceled if not in a final state.
         # This does NOT actually stop the background thread running the agent.
@@ -702,8 +791,13 @@ def create_file_processor_blueprint():
 
             # If there's an active stream, send a final cancel event
             if task_id in stream_queues:
-                stream_q = stream_queues[task_id]
-                asyncio.create_task(stream_q.put({"id": task_id, "status": task['status'], "final": True, "event_type": "task_status_update"}))
+                sync_stream_q = stream_queues[task_id]
+                try:
+                    # Signal cancellation to the client via the queue
+                    cancel_event = {"id": task_id, "status": task['status'], "final": True, "event_type": "task_status_update"}
+                    sync_stream_q.put(cancel_event)
+                except Exception as e:
+                    logger.warning(f"Failed to put cancellation event to sync queue for task {task_id}: {e}")
 
         else:
             logger.warning(f"Task {task_id} is already in a final state ({task['status']['state']}), cannot cancel.")
@@ -720,7 +814,4 @@ def create_file_processor_blueprint():
             "error": str(e)
         }), 500
 
-    return file_processor_api # Return the configured blueprint
-
-# --- Main execution (for running this server directly) ---
-# Removed, as this file is now imported as a module by app.py 
+    return file_processor_api # Return the configured blueprint 

@@ -2,14 +2,20 @@
 
 import logging
 import sys
+import os
 
 class LoggingModule:
-    def __init__(self, log_file="agent.log", log_level=logging.INFO):
+    def __init__(self, log_file="agent.log", log_level=logging.INFO, log_folder="LOGS"):
         self.logger = logging.getLogger("AutonomousAgent")
         self.logger.setLevel(log_level)
 
+        # Ensure the log folder exists
+        if not os.path.exists(log_folder):
+            os.makedirs(log_folder, exist_ok=True)
+
         # Create handlers
-        file_handler = logging.FileHandler(log_file)
+        full_log_file_path = os.path.join(log_folder, log_file)
+        file_handler = logging.FileHandler(full_log_file_path, encoding='utf-8')
         file_handler.setLevel(log_level)
 
         stream_handler = logging.StreamHandler(sys.stdout) # Output to console

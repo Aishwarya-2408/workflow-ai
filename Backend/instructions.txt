@@ -1,15 +1,25 @@
-1. Read the Excel File:
-   Load the sheet titled `FS Award Workflow`.
-2. Identify the Header Row Smartly:
-    Scan the rows to detect the header line.
-    The header line is the row that contains both:
-      One or more cells with the keyword `"condition"` (case-insensitive).
-      One or more cells with the keyword `"approver"` (case-insensitive).
-3. Unmerge Cells Below the Header Row:
-    For all rows below the detected header row:  Unmerge all merged cells.
-      Fill each resulting cell with the value from the top-left cell of the original merged region.
-4. Check If any column (except columns whose header contains %Approver%) contains multiple values in a single cell, separated by line breaks (i.e., newline characters \n or Excel line breaks):
-	Split the cell into multiple values using the line break as the separator.
-	For each individual non-blank value, create a new row and replicate all other column values from the original row in each new row.
-	Do not create a new row for blank lines resulting from the split.
-5. Save the Resulting Data to workflow_processed_output.xlsx
+Read Excel Files:
+	other files are input files ending with _wcm.xlsx 
+	Mapping file: DRB_Mapping.xlsx
+	Consider  "List of Subsidiary" sheet in the mapping file.
+	Confirm the column "Condition" exists in the input files and Code and Name exist in the mapping file.
+Create a mapping table from Name → Code.
+	While creating table, 
+	Remove all special characters from the Name. This includes:
+		Periods .
+		Hyphens -
+		Any other punctuation symbols
+	Do not remove spaces.
+	Use the cleaned-up Name as the key and the Code as the value in a mapping table.
+Process the input files one by one
+For each row in the input file, Extract the name after Subsidary=
+	Extract the value after Subsidary= (e.g., AUTOMOTIVE CORPORATION (MALAYSIA) SDN. BHD.).
+	Remove all special characters from this extracted name, This includes:
+		Periods .
+		Hyphens -
+		Any other punctuation symbols
+	Do not remove spaces.
+	Use this cleaned name to look up the corresponding code from the mapping table.
+	Replace the name in the Condition value with the matching code.
+	Example: Subsidary=AUTOMOTIVE CORPORATION (MALAYSIA) SDN. BHD. → Subsidary=ACM
+Save the output files as {input_filename}_.xlsx

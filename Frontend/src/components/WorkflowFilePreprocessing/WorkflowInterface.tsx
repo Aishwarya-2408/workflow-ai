@@ -9,8 +9,7 @@ import { ProgressTracker } from "./ProgressTracker";
 import { useToast } from "@/hooks/use-toast";
 import { downloadPrompt } from "@/utils/promptUtils";
 import { Save, Lock, Unlock, Download, RotateCcw } from "lucide-react";
-import { API_BASE_URL } from "@/services/api";
-import { sendFileProcessingTask } from "@/services/api";
+import { API_BASE_URL, sendFileProcessingTask, downloadFile } from "@/services/api";
 
 export function WorkflowInterface() {
 
@@ -28,6 +27,7 @@ export function WorkflowInterface() {
   const [activeTab, setActiveTab] = useState("default");
   const [noInputFiles, setNoInputFiles] = useState(false);
   const { toast, dismiss } = useToast();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/default_prompt.txt')
@@ -47,12 +47,14 @@ export function WorkflowInterface() {
           description: "Could not load the default prompt from file.",
           variant: "destructive",
         });
+        setErrorMessage("Error loading default prompt from file.");
       });
   }, []); // Empty dependency array ensures this runs only once on mount
 
   const handleFilesUpload = (files: File[]) => {
     setUploadedFiles(files);
     setIsCompleted(false);
+    setErrorMessage(null);
     // Toast is handled in the FileUploadZone component in the visual-ui-creator-gen project,
     // but we can keep a simple confirmation here if needed.
     // toast({
@@ -151,6 +153,7 @@ export function WorkflowInterface() {
         description: "Please upload at least one Excel file or check 'No input files'.",
         variant: "destructive",
       });
+      setErrorMessage("Please upload at least one Excel file or check 'No input files'.");
       return;
     }
 
@@ -167,12 +170,14 @@ export function WorkflowInterface() {
         description: "Please enter a prompt before submitting.",
         variant: "destructive",
       });
+      setErrorMessage("Please enter a prompt before submitting.");
       return;
     }
 
     setIsProcessing(true);
     setProgress(0);
     setIsCompleted(false);
+    setErrorMessage(null);
 
     const initialToast = toast({
         title: "Submitting task...",
@@ -230,6 +235,7 @@ export function WorkflowInterface() {
                     duration: 5000,
                 });
                 setIsProcessing(false);
+                setErrorMessage(error.message || String(error));
                 return;
             }
         }
@@ -272,6 +278,7 @@ export function WorkflowInterface() {
                 duration: 5000,
             });
             setIsProcessing(false);
+            setErrorMessage(errorDetail);
             return;
         }
 
@@ -282,6 +289,8 @@ export function WorkflowInterface() {
         let currentStatusMessage = "";
         let streamDownloadUrl = null;
         let streamDownloadFilename = null;
+        let taskFailedDuringStream = false;
+        let taskIsCompleted = false;
 
         const processStream = async () => {
             while (true) {
@@ -316,6 +325,8 @@ export function WorkflowInterface() {
 
                             if (eventType === 'task_status_update') {
                                 currentStatusMessage = update.status.message?.parts?.[0]?.text || '';
+                                // Log the full update object to diagnose premature stream closure
+                                console.log(`FULL RECEIVED task_status_update: ${JSON.stringify(update, null, 2)}`);
                                 initialToast.update({
                                     id: initialToast.id,
                                     title: `Task Status: ${update.status.state}`,
@@ -324,8 +335,13 @@ export function WorkflowInterface() {
                                     duration: update.final ? 5000 : Infinity,
                                 });
 
-                                setIsProcessing(update.status.state === 'working');
-                                setIsCompleted(update.status.state === 'completed');
+                                if (update.status.state === 'completed') {
+                                    taskIsCompleted = true;
+                                }
+                                if (update.status.state === 'failed' || update.status.state === 'canceled') {
+                                    setErrorMessage(currentStatusMessage);
+                                    taskFailedDuringStream = true;
+                                }
 
                                 if (update.status.state === 'working') {
                                     setProgress(50);
@@ -334,6 +350,7 @@ export function WorkflowInterface() {
                                 }
 
                                 if (update.final) {
+                                    setIsProcessing(false);
                                     if (update.status.state === 'completed' && update.metadata && update.metadata.downloadUrl) {
                                         const backendDownloadPath = update.metadata.downloadUrl;
                                         if (backendDownloadPath && backendDownloadPath.startsWith('/api/tasks/')) {
@@ -348,10 +365,11 @@ export function WorkflowInterface() {
                                         streamDownloadUrl = null;
                                         streamDownloadFilename = null;
                                     }
-                                    accumulatedArtifactText = '';
                                 }
 
                             } else if (eventType === 'task_artifact_update') {
+                                // Log the full artifact update object
+                                console.log(`FULL RECEIVED task_artifact_update: ${JSON.stringify(update, null, 2)}`);
                                 update.artifact.parts.forEach((part: any) => {
                                     if (part.type === 'text' && part.text) {
                                         accumulatedArtifactText += part.text + '\n';
@@ -366,6 +384,15 @@ export function WorkflowInterface() {
                                     id: initialToast.id,
                                     description: `${currentStatusMessage}\n\n${accumulatedArtifactText.trim()}`,
                                 });
+                            } else if (eventType === 'task_progress_update') {
+                                setProgress(update.progress);
+                                currentStatusMessage = update.message;
+                                initialToast.update({
+                                    id: initialToast.id,
+                                    title: `Processing: ${update.progress}%`,
+                                    description: update.message,
+                                    duration: Infinity,
+                                });
                             }
                         }
                     } catch (parseError) {
@@ -377,21 +404,49 @@ export function WorkflowInterface() {
                            variant: "destructive",
                            duration: 5000,
                         });
-                        setIsProcessing(false);
+                        taskFailedDuringStream = true;
+                        setErrorMessage(`Streaming error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
                         reader.cancel();
                         break;
                     }
                 }
             }
+
+            // Final state updates after stream processing
             setIsProcessing(false);
             dismiss(initialToast.id);
 
-            let finalTitle = isCompleted ? "Task Completed" : (currentStatusMessage.includes("canceled") ? "Task Canceled" : "Task Failed");
+            let finalTitle: string;
+            let finalVariant: "default" | "destructive";
             let finalDescription = currentStatusMessage || "See console for details.";
-            let finalVariant: "default" | "destructive" = isCompleted ? "default" : "destructive";
 
             if (accumulatedArtifactText) {
                 finalDescription += `\n\n${accumulatedArtifactText.trim()}`;
+            }
+
+            // Set final completion state based on the local variable
+            setIsCompleted(taskIsCompleted);
+
+            // This part is for the toast notification, keep its logic separate if needed
+            if (taskIsCompleted) {
+                finalTitle = "Task Completed";
+                finalVariant = "default";
+                setErrorMessage(null);
+            } else if (taskFailedDuringStream) {
+                finalTitle = "Task Failed";
+                finalVariant = "destructive";
+                setErrorMessage(finalDescription);
+            } else {
+                // Fallback for unexpected stream end or cancellation not explicitly marked failed
+                if (currentStatusMessage.toLowerCase().includes("canceled")) {
+                    finalTitle = "Task Canceled";
+                    finalVariant = "destructive";
+                    setErrorMessage("Task was canceled.");
+                } else {
+                    finalTitle = "Unknown Status";
+                    finalVariant = "destructive";
+                    setErrorMessage(finalDescription);
+                }
             }
 
             toast({
@@ -432,6 +487,7 @@ export function WorkflowInterface() {
             duration: 5000,
         });
         setIsProcessing(false);
+        setErrorMessage(error.message || String(error));
     } finally {
     }
   };
@@ -559,29 +615,24 @@ export function WorkflowInterface() {
         </div>
       )}
 
-      <ProgressTracker 
-        isProcessing={isProcessing}
-        progress={progress}
-        isCompleted={isCompleted}
-      />
-
       <div className="flex justify-center">
         <Button 
           onClick={handleSubmit}
           disabled={isProcessing || (uploadedFiles.length === 0 && !noInputFiles)}
           className="px-8 py-2"
         >
-          {isProcessing ? "Processing..." : "Submit"}
+          {isProcessing ? "Processing..." : "AI assist"}
         </Button>
       </div>
-      {isCompleted && downloadUrl && (
-            <div className="flex justify-center mt-4">
-                <a href={downloadUrl} download={downloadFilename} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download Processed File ({downloadFilename})
-                </a>
-            </div>
-        )}
+
+      <ProgressTracker 
+        isProcessing={isProcessing}
+        progress={progress}
+        isCompleted={isCompleted}
+        downloadUrl={downloadUrl}
+        downloadFilename={downloadFilename}
+        errorMessage={errorMessage}
+      />
     </div>
   );
 } 

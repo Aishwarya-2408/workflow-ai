@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "@/lib/WorkflowContext";
 import { generateWorkflowFiles, getCurrentFile, downloadFile, API_BASE_URL } from "@/services/api";
 import { toast } from "@/components/ui/use-toast";
+import { Progress } from "@/components/ui/progress";
 
 const GenerateOptions: React.FC = () => {
   const navigate = useNavigate();
@@ -18,6 +19,8 @@ const GenerateOptions: React.FC = () => {
     metadata: true
   });
   const [generatedFiles, setGeneratedFiles] = useState({});
+  const [processingStatus, setProcessingStatus] = useState("Idle");
+  const [processingProgress, setProcessingProgress] = useState(0);
 
   // Handler for option selection
   const handleOptionToggle = (option: 'mcw' | 'wcm' | 'metadata') => {
@@ -36,6 +39,8 @@ const GenerateOptions: React.FC = () => {
 
     setGenerating(true);
     setGeneratedFiles({});
+    setProcessingStatus("Initializing...");
+    setProcessingProgress(0);
 
     try {
       const fileInfo = await getCurrentFile();
@@ -45,21 +50,66 @@ const GenerateOptions: React.FC = () => {
         return;
       }
 
-      const generated = await generateWorkflowFiles(fileInfo.filename, selectedOptions);
-      console.log("Generated files info:", generated);
-      setGeneratedFiles(generated);
-      setGenerated(true);
+      const taskId = `task-${Date.now()}`;
+      const eventSource = new EventSource(`${API_BASE_URL}/file-preprocessing/tasks/sendSubscribe?id=${taskId}`);
 
-      // Mark the generate step as completed in workflow context
-      markStepCompleted(2);
-      localStorage.setItem('hasGeneratedFiles', 'true');
+      eventSource.onmessage = (event) => {
+        console.log("SSE Message:", event);
+      };
 
-      toast({ title: "Generation Complete", description: "Workflow files generated successfully.", variant: "default" });
+      eventSource.addEventListener('task_status_update', (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Task Status Update:", data);
+        setProcessingStatus(data.status.message.parts[0].text);
+        if (data.final) {
+          eventSource.close();
+          setGenerating(false);
+          if (data.status.state === "completed") {
+            setGenerated(true);
+            setGeneratedFiles(data.metadata || {});
+            markStepCompleted(2);
+            localStorage.setItem('hasGeneratedFiles', 'true');
+            toast({ title: "Generation Complete", description: "Workflow files generated successfully.", variant: "default" });
+          } else {
+            toast({ title: "Generation Failed", description: data.status.message.parts[0].text, variant: "destructive" });
+          }
+        }
+      });
+
+      eventSource.addEventListener('task_progress_update', (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Task Progress Update:", data);
+        setProcessingProgress(data.progress);
+        setProcessingStatus(data.message);
+      });
+
+      eventSource.onerror = (error) => {
+        console.error("SSE Error:", error);
+        eventSource.close();
+        setGenerating(false);
+        toast({ title: "Generation Failed", description: "Connection error or stream ended unexpectedly.", variant: "destructive" });
+      };
+
+      await fetch(`${API_BASE_URL}/file-preprocessing/tasks/sendSubscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: taskId,
+          message: {
+            parts: [{ type: "text", text: "Generate workflow files." }],
+          },
+          metadata: {
+            filename: fileInfo.filename,
+            options: selectedOptions
+          }
+        }),
+      });
 
     } catch (error) {
-      console.error("Error during file generation:", error);
-      toast({ title: "Generation Failed", description: error instanceof Error ? error.message : "An unexpected error occurred during generation.", variant: "destructive" });
-    } finally {
+      console.error("Error during file generation setup:", error);
+      toast({ title: "Generation Failed", description: error instanceof Error ? error.message : "An unexpected error occurred during generation setup.", variant: "destructive" });
       setGenerating(false);
     }
   };
@@ -76,11 +126,11 @@ const GenerateOptions: React.FC = () => {
        return;
     }
     
-    setGenerating(true); // Use generating state to show loading during download too
+    setGenerating(true);
     
     const downloadUrl = `${API_BASE_URL}/image/download-generated-files?${new URLSearchParams(generatedFiles).toString()}`;
 
-    const zipFilename = `workflow_outputs_${new Date().toISOString().slice(0, 10)}.zip`; // Generate a meaningful zip filename
+    const zipFilename = `workflow_outputs_${new Date().toISOString().slice(0, 10)}.zip`;
 
     try {
         console.log("Attempting to download files from:", downloadUrl);
@@ -94,21 +144,16 @@ const GenerateOptions: React.FC = () => {
         const blob = await response.blob();
         console.log("Received blob for download:", blob.type, blob.size, "bytes");
 
-        // Create a blob URL and trigger download
         const blobUrl = window.URL.createObjectURL(blob);
 
-        // Create an anchor element
         const link = document.createElement('a');
         link.href = blobUrl;
-        link.download = zipFilename; // Use the generated zip filename
+        link.download = zipFilename;
 
-        // Append to the document
         document.body.appendChild(link);
 
-        // Trigger the download
         link.click();
 
-        // Clean up
         document.body.removeChild(link);
         window.URL.revokeObjectURL(blobUrl);
 
@@ -137,102 +182,22 @@ const GenerateOptions: React.FC = () => {
           </p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* MCW Option */}
-          <Card 
-            className={`cursor-pointer transition-all border-2 ${
-              selectedOptions.mcw 
-                ? 'border-blue-500 shadow-md bg-blue-50' 
-                : 'border-slate-200 hover:border-slate-300'
-            }`}
-            onClick={() => handleOptionToggle('mcw')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <CardTitle className="text-lg text-slate-800">MCW File</CardTitle>
-                <div className={`w-5 h-5 rounded-full ${
-                  selectedOptions.mcw 
-                    ? 'bg-blue-500 flex items-center justify-center' 
-                    : 'border-2 border-slate-300'
-                }`}>
-                  {selectedOptions.mcw && <CheckCircle className="h-4 w-4 text-white" />}
+        {generating ? (
+            <Card className="mb-8 bg-blue-50 border-blue-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg text-blue-800">Progress of Execution</CardTitle>
+                <CardDescription className="text-blue-700">Once processing is completed successfully, download file option will be available.</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-blue-600 font-medium w-32">Status:</span>
+                  <p className="text-blue-800 flex-1">{processingStatus}</p>
                 </div>
-              </div>
-              <CardDescription className="text-slate-500">
-                Master Condition Workflow
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-sm text-slate-600">
-                Contains the complete workflow with all conditions and transitions.
-              </p>
-            </CardContent>
-          </Card>
-          
-          {/* WCM Option */}
-          <Card 
-            className={`cursor-pointer transition-all border-2 ${
-              selectedOptions.wcm 
-                ? 'border-blue-500 shadow-md bg-blue-50' 
-                : 'border-slate-200 hover:border-slate-300'
-            }`}
-            onClick={() => handleOptionToggle('wcm')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <CardTitle className="text-lg text-slate-800">WCM File</CardTitle>
-                <div className={`w-5 h-5 rounded-full ${
-                  selectedOptions.wcm 
-                    ? 'bg-blue-500 flex items-center justify-center' 
-                    : 'border-2 border-slate-300'
-                }`}>
-                  {selectedOptions.wcm && <CheckCircle className="h-4 w-4 text-white" />}
-                </div>
-              </div>
-              <CardDescription className="text-slate-500">
-                Workflow Condition Matrix
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-sm text-slate-600">
-                Defines relationships between conditions in a matrix format.
-              </p>
-            </CardContent>
-          </Card>
-          
-          {/* Metadata Option */}
-          <Card 
-            className={`cursor-pointer transition-all border-2 ${
-              selectedOptions.metadata 
-                ? 'border-blue-500 shadow-md bg-blue-50' 
-                : 'border-slate-200 hover:border-slate-300'
-            }`}
-            onClick={() => handleOptionToggle('metadata')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <CardTitle className="text-lg text-slate-800">Metadata</CardTitle>
-                <div className={`w-5 h-5 rounded-full ${
-                  selectedOptions.metadata 
-                    ? 'bg-blue-500 flex items-center justify-center' 
-                    : 'border-2 border-slate-300'
-                }`}>
-                  {selectedOptions.metadata && <CheckCircle className="h-4 w-4 text-white" />}
-                </div>
-              </div>
-              <CardDescription className="text-slate-500">
-                Workflow Metadata
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-sm text-slate-600">
-                Additional information about workflow nodes, edges, and configurations.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-        
-        {generated ? (
+                <Progress value={processingProgress} className="w-full mt-4 bg-blue-100" key={processingProgress} />
+                <p className="text-sm text-blue-600 text-right mt-2">{processingProgress}% complete</p>
+              </CardContent>
+            </Card>
+        ) : generated ? (
           <Card className="mb-8 bg-green-50 border-green-200">
             <CardContent className="p-6">
               <div className="flex flex-col items-center text-center space-y-4">
@@ -248,59 +213,129 @@ const GenerateOptions: React.FC = () => {
                   onClick={handleDownload}
                 >
                   <FileDown className="h-4 w-4 mr-2" />
-                  Download Files
+                  Download Generated Files
                 </Button>
               </div>
             </CardContent>
           </Card>
         ) : (
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Generate Selected Files</h3>
-                  <p className="text-slate-600 mt-1">
-                    {Object.values(selectedOptions).filter(Boolean).length} option(s) selected
-                  </p>
+            <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  {/* MCW Option */}
+                  <Card 
+                    className={`cursor-pointer transition-all border-2 ${
+                      selectedOptions.mcw 
+                        ? 'border-blue-500 shadow-md bg-blue-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                    onClick={() => handleOptionToggle('mcw')}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <CardTitle className="text-lg text-slate-800">MCW File</CardTitle>
+                        <div className={`w-5 h-5 rounded-full ${
+                          selectedOptions.mcw 
+                            ? 'bg-blue-500 flex items-center justify-center' 
+                            : 'border-2 border-slate-300'
+                        }`}>
+                          {selectedOptions.mcw && <CheckCircle className="h-4 w-4 text-white" />}
+                        </div>
+                      </div>
+                      <CardDescription className="text-slate-500">
+                        Master Condition Workflow
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <p className="text-sm text-slate-600">
+                        Contains the complete workflow with all conditions and transitions.
+                      </p>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* WCM Option */}
+                  <Card 
+                    className={`cursor-pointer transition-all border-2 ${
+                      selectedOptions.wcm 
+                        ? 'border-blue-500 shadow-md bg-blue-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                    onClick={() => handleOptionToggle('wcm')}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <CardTitle className="text-lg text-slate-800">WCM File</CardTitle>
+                        <div className={`w-5 h-5 rounded-full ${
+                          selectedOptions.wcm 
+                            ? 'bg-blue-500 flex items-center justify-center' 
+                            : 'border-2 border-slate-300'
+                        }`}>
+                          {selectedOptions.wcm && <CheckCircle className="h-4 w-4 text-white" />}
+                        </div>
+                      </div>
+                      <CardDescription className="text-slate-500">
+                        Workflow Condition Matrix
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <p className="text-sm text-slate-600">
+                        Defines relationships between conditions in a matrix format.
+                      </p>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Metadata Option */}
+                  <Card 
+                    className={`cursor-pointer transition-all border-2 ${
+                      selectedOptions.metadata 
+                        ? 'border-blue-500 shadow-md bg-blue-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                    onClick={() => handleOptionToggle('metadata')}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <CardTitle className="text-lg text-slate-800">Metadata</CardTitle>
+                        <div className={`w-5 h-5 rounded-full ${
+                          selectedOptions.metadata 
+                            ? 'bg-blue-500 flex items-center justify-center' 
+                            : 'border-2 border-slate-300'
+                        }`}>
+                          {selectedOptions.metadata && <CheckCircle className="h-4 w-4 text-white" />}
+                        </div>
+                      </div>
+                      <CardDescription className="text-slate-500">
+                        Workflow Metadata
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <p className="text-sm text-slate-600">
+                        Additional information about workflow nodes, edges, and configurations.
+                      </p>
+                    </CardContent>
+                  </Card>
                 </div>
-                <Button
-                  className="bg-black hover:bg-gray-800 text-white"
-                  onClick={handleGenerate}
-                  disabled={generating || Object.values(selectedOptions).every(option => !option)}
-                >
-                  {generating ? (
-                    <>
-                      <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      Generating...
-                    </>
-                  ) : (
-                    'Generate Files'
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+
+                <div className="flex justify-between items-center">
+                  <Button 
+                    variant="outline"
+                    onClick={handleBack}
+                    className="text-slate-600 border-slate-300 hover:text-blue-600 hover:border-blue-600"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Back to Design
+                  </Button>
+
+                  <Button 
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {generating ? "Processing..." : "Generate Files"}
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </div>
+            </>
         )}
-        
-        <div className="flex justify-between">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Back to Design
-          </Button>
-          
-          {generated && (
-            <Button
-              className="bg-black hover:bg-gray-800 text-white"
-              onClick={handleFinish}
-            >
-              Finish
-              <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
-          )}
-        </div>
       </div>
     </div>
   );

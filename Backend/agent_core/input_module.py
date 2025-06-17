@@ -51,14 +51,7 @@ class InputModule:
                 return []
             # Split by comma and strip whitespace
             return [p.strip() for p in file_paths.split(',') if p.strip()]
-        # Fallback to original behavior
-        if prompt is None:
-            prompt = "Enter relevant file path(s) for context, separated by commas (or press Enter if none): "
-        user_input = input(prompt)
-        cleaned = user_input.strip().lower()
-        if cleaned in ('', 'none'):
-            return []
-        return [p.strip() for p in user_input.split(',') if p.strip()]
+
 
 if __name__ == '__main__':
     # Example Usage

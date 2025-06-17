@@ -15,11 +15,9 @@ const stagewiseConfig = {
 const appRoot = ReactDOM.createRoot(document.getElementById("root")!);
 
 appRoot.render(
-  <React.StrictMode>
     <BrowserRouter basename={basename}>
       <App />
     </BrowserRouter>
-  </React.StrictMode>
 );
 
 // Create a separate root for the Stagewise Toolbar in development
@@ -28,8 +26,6 @@ if (process.env.NODE_ENV === 'development') {
   document.body.appendChild(toolbarRootElement);
   const toolbarRoot = ReactDOM.createRoot(toolbarRootElement);
   toolbarRoot.render(
-    <React.StrictMode>
-      <StagewiseToolbar config={stagewiseConfig} />
-    </React.StrictMode>
+    <StagewiseToolbar config={stagewiseConfig} />
   );
 }

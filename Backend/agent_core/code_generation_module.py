@@ -198,8 +198,7 @@ class CodeGenerationModule:
                             # Continue to extraction attempt with potentially empty raw_response_text
                         
                         # Log and print the raw response text
-                        self.logger.info(f"Raw Vertex AI Response for Task (first 500 chars):\n{raw_response_text[:500]}...")
-                        print(f"\n--- Raw Vertex AI Response ---\n{raw_response_text}\n--- End Raw Response ---\n") # Print to console
+                        self.logger.info(f"\n--- Raw Vertex AI Response ---\n{raw_response_text}\n--- End Raw Response ---\n") # Print to console
 
                         if raw_response_text:
                             # Extract code and packages from the raw response text
@@ -241,60 +240,8 @@ class CodeGenerationModule:
                 error_message = str(e)
         else: # MOCK MODE
             self.logger.info("Using MOCK code generation.")
-            if "add two numbers" in prompt.lower():
-                generated_code_text = (
-                    "def add(a, b):\n"
-                    "    \"\"\"Adds two numbers.\"\"\"\n"
-                    "    return a + b\n"
-                    "\n"
-                    "# Example usage:\n"
-                    "num1 = 5\n"
-                    "num2 = 3\n"
-                    "print(f\"The sum of {num1} and {num2} is {add(num1, num2)}\")"
-                )
-                required_packages = [] # No specific packages needed for this simple example
-            elif "refactor" in prompt.lower() and "dummy_script.py" in prompt:
-                 generated_code_text = (
-                    "# Refactored code for dummy_script.py\n"
-                    "def efficient_function():\n"
-                    "    # Improved logic here\n"
-                    "    return 2 * 2\n"
-                    "\n"
-                    "print(efficient_function())"
-                )
-                 required_packages = []
-            elif "read the excel file" in prompt.lower() or "sort by spend_usd" in prompt.lower():
-                 # Simulate the response you provided for the Excel task
-                 generated_code_text = (
-                    "import pandas as pd\n"
-                    "import sys\n"
-                    "\n"
-                    "try:\n"
-                    "    # Read the Excel file into a pandas DataFrame\n"
-                    "    excel_file_path = 'C:\\\\Users\\\\aishwarya.rane\\\\OneDrive - Zycus\\\\Documents\\\\File_Processing_Agent\\\\uploads\\\\13a74e6a-a734-4b52-8b61-5ea8577d05bc_Input.xlsx' # Placeholder - path should be dynamic\n"
-                    "    df = pd.read_excel(excel_file_path, engine='openpyxl')  # Explicitly use openpyxl engine\n"
-                    "\n"
-                    "    # Sort the DataFrame by 'spend_usd' in descending order\n"
-                    "    df_sorted = df.sort_values(by='spend_usd', ascending=False)\n"
-                    "\n"
-                    "    # Save the sorted DataFrame to a new Excel file\n"
-                    "    output_file_path = 'output.xlsx'\n"
-                    "    df_sorted.to_excel(output_file_path, index=False, engine='openpyxl')  # Explicitly use openpyxl engine\n"
-                    "\n"
-                    "    print(f\"Successfully sorted and saved the data to {output_file_path}\")\n"
-                    "\n"
-                    "except FileNotFoundError:\n"
-                    "    print(f\"Error: File not found at {excel_file_path}\", file=sys.stderr)\n"
-                    "    sys.exit(1)  # Exit with non-zero status code\n"
-                    "except Exception as e:\n"
-                    "    print(f\"Error processing Excel file: {e}\", file=sys.stderr)\n"
-                    "    sys.exit(1)  # Exit with non-zero status code\n"
-                    "\n"
-                )
-                 required_packages = ["pandas", "openpyxl"]
-            else:
-                generated_code_text = "# Placeholder for AI-generated code\nprint('Hello from MOCK generated code!')"
-                required_packages = []
+            generated_code_text = "# Placeholder for AI-generated code\nprint('Hello from MOCK generated code!')"
+            required_packages = ["pandas", "openpyxl"]
 
         if error_message:
              return {"code": None, "error": error_message, "syntax_valid": False, "required_packages": []}
