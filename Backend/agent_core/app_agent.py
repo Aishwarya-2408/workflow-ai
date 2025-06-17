@@ -18,6 +18,10 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timezone
 from flask import Blueprint
 
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)
+
 # Attempt to import the original MainAgent and its dependencies
 from .main_agent import MainAgent
 from .logging_module import LoggingModule # For setting up a logger instance
@@ -511,7 +515,7 @@ def create_file_processor_blueprint():
         if not message or not isinstance(message, dict):
             return jsonify({'detail': 'Invalid message format'}), 400
 
-        instruction_text = ""
+        instructions_text = ""
         file_paths_for_agent = []
 
         parts = message.get('parts', [])
@@ -519,28 +523,26 @@ def create_file_processor_blueprint():
             return jsonify({'detail': 'Invalid message parts format'}), 400
 
         for part in parts:
-            if not isinstance(part, dict): continue
-
-            if part.get('type') == "text" and part.get('text'):
-                instruction_text += part['text'] + "\n"
-            elif part.get('type') == "file" and part.get('file'):
+            if part.get('type') == 'text':
+                instructions_text += part.get('text', '') + "\n"
+            elif part.get('type') == 'file':
                 saved_path = save_file_part(part, task_id, workspace_root)
                 if saved_path:
                     file_paths_for_agent.append(saved_path)
 
         update_input_file_paths_in_config(file_paths_for_agent, workspace_root)
 
-        if not instruction_text and not file_paths_for_agent:
+        if not instructions_text and not file_paths_for_agent:
             return jsonify({'detail': "No text instructions or file inputs provided."}), 400
 
-        logger.info(f"File Processor tasks/send: new task ID {task_id}. Instructions: {instruction_text[:100]}... Files: {file_paths_for_agent}")
+        logger.info(f"File Processor tasks/send: new task ID {task_id}. Instructions: {instructions_text[:100]}... Files: {file_paths_for_agent}")
 
         initial_status = {"state": "submitted", "timestamp": get_iso_timestamp(), "message": message}
         task = {"id": task_id, "sessionId": params.get('sessionId'), "status": initial_status, "metadata": params.get('metadata')}
         task_store[task_id] = task
 
         # Run the async task in a separate thread, passing None for the streaming queue
-        thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instruction_text.strip(), file_paths_for_agent, None))
+        thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instructions_text.strip(), file_paths_for_agent, None))
         thread.start()
 
         return jsonify(task)
@@ -562,7 +564,7 @@ def create_file_processor_blueprint():
         if not message or not isinstance(message, dict):
             return jsonify({'detail': 'Invalid message format'}), 400
 
-        instruction_text = ""
+        instructions_text = ""
         file_paths_for_agent = []
 
         parts = message.get('parts', [])
@@ -570,21 +572,19 @@ def create_file_processor_blueprint():
             return jsonify({'detail': 'Invalid message parts format'}), 400
 
         for part in parts:
-            if not isinstance(part, dict): continue
-
-            if part.get('type') == "text" and part.get('text'):
-                instruction_text += part['text'] + "\n"
-            elif part.get('type') == "file" and part.get('file'):
+            if part.get('type') == 'text':
+                instructions_text += part.get('text', '') + "\n"
+            elif part.get('type') == 'file':
                 saved_path = save_file_part(part, task_id, workspace_root)
                 if saved_path:
                     file_paths_for_agent.append(saved_path)
 
         update_input_file_paths_in_config(file_paths_for_agent, workspace_root)
 
-        if not instruction_text and not file_paths_for_agent:
+        if not instructions_text and not file_paths_for_agent:
             return jsonify({'detail': "No text instructions or file inputs provided."}), 400
 
-        logger.info(f"File Processor tasks/sendSubscribe (streaming): new task ID {task_id}. Instructions: {instruction_text[:100]}... Files: {file_paths_for_agent}")
+        logger.info(f"File Processor tasks/sendSubscribe (streaming): new task ID {task_id}. Instructions: {instructions_text[:100]}... Files: {file_paths_for_agent}")
 
         initial_status = {"state": "submitted", "timestamp": get_iso_timestamp(), "message": message}
         task = {"id": task_id, "sessionId": params.get('sessionId'), "status": initial_status, "metadata": params.get('metadata')}
@@ -595,7 +595,7 @@ def create_file_processor_blueprint():
         stream_queues[task_id] = sync_stream_q
 
         # Start the async MainAgent task in a separate thread, passing the synchronous queue
-        thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instruction_text.strip(), file_paths_for_agent, sync_stream_q)) # MODIFIED: Pass sync_stream_q
+        thread = threading.Thread(target=_run_async_task_in_thread, args=(task, instructions_text.strip(), file_paths_for_agent, sync_stream_q)) # MODIFIED: Pass sync_stream_q
         thread.start()
 
         def event_generator(): # MODIFIED: This is now a synchronous generator
@@ -751,67 +751,76 @@ def create_file_processor_blueprint():
         """Retrieves the current state of a task by ID within the file processing workflow."""
         params = request.json
         if not params or 'id' not in params:
-            return jsonify({'detail': 'Task ID not provided in the request'}), 400
+            return jsonify({'detail': 'Missing task ID'}), 400
 
         task_id = params['id']
         task = task_store.get(task_id)
 
         if not task:
-            return jsonify({"detail": f"Task with ID '{task_id}' not found."}), 404
+            logger.warning(f"Task {task_id} requested but not found in task_store.")
+            return jsonify({'detail': f'Task with ID "{task_id}" not found.'}), 404
 
-        # TODO: Implement historyLength if needed
-        logger.info(f"File Processor tasks/get: Received tasks/get for task ID {task_id}. Current state: {task['status']['state']}")
-
-        # Return the full task object from the store
-        return jsonify(task)
+        # Return a copy to prevent external modification
+        return jsonify(task.copy()), 200
 
     @file_processor_api.route("/tasks/cancel", methods=['POST'])
     def file_processor_tasks_cancel():
-        """Requests cancellation of a running task within the file processing workflow."""
+        """Cancels a running task."""
         params = request.json
         if not params or 'id' not in params:
-            return jsonify({'detail': 'Task ID not provided in the request'}), 400
+            return jsonify({'detail': 'Missing task ID'}), 400
 
         task_id = params['id']
         task = task_store.get(task_id)
 
         if not task:
-            return jsonify({"detail": f"Task with ID '{task_id}' not found."}), 404
+            logger.warning(f"Task {task_id} cancellation requested but not found in task_store.")
+            return jsonify({'detail': f'Task with ID "{task_id}" not found.'}), 404
 
-        logger.info(f"File Processor tasks/cancel: Received tasks/cancel for task {task_id}.")
+        if task['status']['state'] == "completed" or task['status']['state'] == "failed" or task['status']['state'] == "canceled":
+            logger.info(f"Task {task_id} already in a final state ({task['status']['state']}). No cancellation needed.")
+            return jsonify({'detail': f'Task {task_id} is already in a final state ({task["status"]["state"]}).'}), 200
 
-        # Basic cancellation: mark as canceled if not in a final state.
-        # This does NOT actually stop the background thread running the agent.
-        # Implementing true cancellation would require signaling mechanisms (e.g., events, flags checked by MainAgent).
-        if task['status']['state'] not in ["completed", "failed", "canceled", "unknown"]:
-            task['status']['state'] = "canceled"
-            task['status']['timestamp'] = get_iso_timestamp()
-            task['status']['message'] = {"role": "agent", "parts": [{"type": "text", "text": "Task cancellation requested and marked."}]}
-            logger.info(f"Task {task_id} marked as canceled.")
+        # Attempt to cancel the task by signaling to its stream queue or setting a flag
+        # This implementation uses the stream_queues to signal cancellation
+        sync_stream_q = stream_queues.get(task_id)
+        if sync_stream_q:
+            try:
+                # Put a specific cancellation event or status update to the queue
+                cancel_status = {"state": "canceled", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": "Task was cancelled by user."}]}}
+                sync_stream_q.put({"id": task_id, "status": cancel_status, "final": True, "event_type": "task_status_update", "progress": 100})
+                logger.info(f"Task {task_id}: Sent cancellation signal to stream queue.")
 
-            # If there's an active stream, send a final cancel event
-            if task_id in stream_queues:
-                sync_stream_q = stream_queues[task_id]
-                try:
-                    # Signal cancellation to the client via the queue
-                    cancel_event = {"id": task_id, "status": task['status'], "final": True, "event_type": "task_status_update"}
-                    sync_stream_q.put(cancel_event)
-                except Exception as e:
-                    logger.warning(f"Failed to put cancellation event to sync queue for task {task_id}: {e}")
+                # Update task store immediately
+                task['status'] = cancel_status
+                task['error'] = "Task cancelled by user."
 
+                return jsonify({'message': f'Cancellation signal sent for task {task_id}.'}), 200
+            except Exception as e:
+                logger.error(f"Error sending cancellation signal to queue for task {task_id}: {e}", exc_info=True)
+                return jsonify({"detail": f"Failed to send cancellation signal for task {task_id}."}), 500
         else:
-            logger.warning(f"Task {task_id} is already in a final state ({task['status']['state']}), cannot cancel.")
+            logger.warning(f"Task {task_id} cancellation requested, but no active stream queue found. Task might not be running or already finished.")
+            # If no stream queue, it means it's not actively streaming, but might be processing
+            # For simplicity, we just update the status in the store
+            cancel_status = {"state": "canceled", "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": "Task was cancelled by user (no active stream)."}]}}
+            task['status'] = cancel_status
+            task['error'] = "Task cancelled by user."
+            return jsonify({'message': f'Task {task_id} status updated to cancelled (no active stream).'}), 200
 
-        # Return the updated task object
-        return jsonify(task)
-
-    # Move the error handler inside the blueprint function
     @file_processor_api.errorhandler(Exception)
     def handle_file_processor_error(e):
-        logger.error(f"Unhandled exception in file_processor_api: {e}", exc_info=True)
-        return jsonify({
-            "detail": "An internal server error occurred while processing your request.",
-            "error": str(e)
-        }), 500
+        logger.exception("An unhandled error occurred in file_processor_api blueprint.")
+        return jsonify(error=str(e)), 500
 
-    return file_processor_api # Return the configured blueprint 
+    return file_processor_api
+
+# Create the file processor blueprint
+file_processor_blueprint = create_file_processor_blueprint()
+
+# Add the file processor blueprint to the app
+app.register_blueprint(file_processor_blueprint)
+
+# Run the app
+if __name__ == '__main__':
+    app.run(debug=True) 

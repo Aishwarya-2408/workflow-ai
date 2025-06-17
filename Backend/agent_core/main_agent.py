@@ -304,7 +304,10 @@ class MainAgent:
                 # This covers cases where the loop breaks due to non-success (e.g., code gen failure, max retries)
                 # and output_delivery_mod.process_and_deliver_output was NOT called yet for the final status.
                 # We need to call it with whatever partial execution_result we have (if any) to get feedback.
-                self.logger.info(f"Delivering final agent result for non-success status: {final_agent_result.get("status")}")
+                if final_agent_result.get("status") != "success":
+                    self.logger.info(f"Delivering final agent result for non-success status: {final_agent_result.get('status')}")
+                else:
+                    self.logger.info(f"Delivering final agent result for success status: {final_agent_result.get('status')}")
                 # Pass an empty execution_result if no execution happened, or last_execution_result if it did.
                 self.output_delivery_mod.process_and_deliver_output(final_agent_result, last_execution_result or {}, None, None)
 

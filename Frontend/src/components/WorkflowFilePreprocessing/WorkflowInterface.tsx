@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { downloadPrompt } from "@/utils/promptUtils";
 import { Save, Lock, Unlock, Download, RotateCcw } from "lucide-react";
 import { API_BASE_URL, sendFileProcessingTask, downloadFile } from "@/services/api";
+import BrainAIButton from "@/components/BrainAIButton";
 
 export function WorkflowInterface() {
 
@@ -616,13 +617,10 @@ export function WorkflowInterface() {
       )}
 
       <div className="flex justify-center">
-        <Button 
+        <BrainAIButton 
           onClick={handleSubmit}
           disabled={isProcessing || (uploadedFiles.length === 0 && !noInputFiles)}
-          className="px-8 py-2"
-        >
-          {isProcessing ? "Processing..." : "AI assist"}
-        </Button>
+        />
       </div>
 
       <ProgressTracker 
