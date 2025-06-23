@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileUploadZone } from "./FileUploadZone";
 import { ProgressTracker } from "./ProgressTracker";
-import { useToast } from "@/hooks/use-toast";
+import { useEnhancedToast } from "@/hooks/use-enhanced-toast";
 import { downloadPrompt } from "@/utils/promptUtils";
 import { Save, Lock, Unlock, Download, RotateCcw } from "lucide-react";
 import { API_BASE_URL, sendFileProcessingTask, downloadFile } from "@/services/api";
 import BrainAIButton from "@/components/BrainAIButton";
+import { MessageDetailModal } from "@/components/ui/message-detail-modal";
 
 export function WorkflowInterface() {
 
@@ -27,8 +28,9 @@ export function WorkflowInterface() {
   const [isCompleted, setIsCompleted] = useState(false);
   const [activeTab, setActiveTab] = useState("default");
   const [noInputFiles, setNoInputFiles] = useState(false);
-  const { toast, dismiss } = useToast();
+  const { toast, dismiss, modalState, hideModal } = useEnhancedToast();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/default_prompt.txt')
@@ -47,6 +49,7 @@ export function WorkflowInterface() {
           title: "Error loading prompt",
           description: "Could not load the default prompt from file.",
           variant: "destructive",
+          duration: Infinity,
         });
         setErrorMessage("Error loading default prompt from file.");
       });
@@ -70,6 +73,7 @@ export function WorkflowInterface() {
     toast({
       title: "Default prompt saved",
       description: "The default prompt has been saved and locked for editing.",
+      duration: 3000,
     });
   };
 
@@ -79,6 +83,7 @@ export function WorkflowInterface() {
     toast({
       title: "New prompt saved",
       description: "The new prompt has been saved and locked for editing.",
+      duration: 3000,
     });
   };
 
@@ -87,6 +92,7 @@ export function WorkflowInterface() {
     toast({
       title: "Default prompt unlocked",
       description: "You can now edit the default prompt.",
+      duration: 3000,
     });
   };
 
@@ -95,6 +101,7 @@ export function WorkflowInterface() {
     toast({
       title: "New prompt unlocked",
       description: "You can now edit the new prompt.",
+      duration: 3000,
     });
   };
 
@@ -109,6 +116,7 @@ export function WorkflowInterface() {
         toast({
           title: "Default prompt reset",
           description: "The default prompt has been reset from the file.",
+          duration: 3000,
         });
       })
       .catch(error => {
@@ -117,6 +125,7 @@ export function WorkflowInterface() {
           title: "Error resetting prompt",
           description: "Could not reset the default prompt from file.",
           variant: "destructive",
+          duration: Infinity,
         });
       });
   };
@@ -127,6 +136,7 @@ export function WorkflowInterface() {
     toast({
       title: "Download started",
       description: "Default prompt file is being downloaded.",
+      duration: 3000,
     });
   };
 
@@ -137,6 +147,7 @@ export function WorkflowInterface() {
         title: "No content to download",
         description: "Please enter some content in the new prompt before downloading.",
         variant: "destructive",
+        duration: Infinity,
       });
       return;
     }
@@ -144,6 +155,7 @@ export function WorkflowInterface() {
     toast({
       title: "Download started",
       description: "New prompt file is being downloaded.",
+      duration: 3000,
     });
   };
 
@@ -153,6 +165,7 @@ export function WorkflowInterface() {
         title: "No files uploaded",
         description: "Please upload at least one Excel file or check 'No input files'.",
         variant: "destructive",
+        duration: Infinity,
       });
       setErrorMessage("Please upload at least one Excel file or check 'No input files'.");
       return;
@@ -170,6 +183,7 @@ export function WorkflowInterface() {
         title: "No prompt selected",
         description: "Please enter a prompt before submitting.",
         variant: "destructive",
+        duration: Infinity,
       });
       setErrorMessage("Please enter a prompt before submitting.");
       return;
@@ -233,7 +247,7 @@ export function WorkflowInterface() {
                     title: "Upload Error",
                     description: `Failed to upload file ${file.name}: ${error.message || String(error)}`,
                     variant: "destructive",
-                    duration: 5000,
+                    duration: Infinity,
                 });
                 setIsProcessing(false);
                 setErrorMessage(error.message || String(error));
@@ -276,7 +290,7 @@ export function WorkflowInterface() {
                 title: "Task Submission Failed",
                 description: `Error submitting task: ${response.status} ${errorDetail}`,
                 variant: "destructive",
-                duration: 5000,
+                duration: Infinity,
             });
             setIsProcessing(false);
             setErrorMessage(errorDetail);
@@ -333,7 +347,7 @@ export function WorkflowInterface() {
                                     title: `Task Status: ${update.status.state}`,
                                     description: currentStatusMessage,
                                     variant: update.status.state === 'failed' ? 'destructive' : 'default',
-                                    duration: update.final ? 5000 : Infinity,
+                                    duration: Infinity,
                                 });
 
                                 if (update.status.state === 'completed') {
@@ -353,13 +367,12 @@ export function WorkflowInterface() {
                                 if (update.final) {
                                     setIsProcessing(false);
                                     if (update.status.state === 'completed' && update.metadata && update.metadata.downloadUrl) {
-                                        const backendDownloadPath = update.metadata.downloadUrl;
-                                        if (backendDownloadPath && backendDownloadPath.startsWith('/api/tasks/')) {
-                                            streamDownloadUrl = `${API_BASE_URL}/file-preprocessing${backendDownloadPath.substring('/api'.length)}`;
-                                        } else {
-                                            streamDownloadUrl = backendDownloadPath;
-                                            console.warn("Unexpected downloadUrl format received from backend:", backendDownloadPath);
-                                        }
+                                        const backendDownloadPath = update.metadata.downloadUrl; // e.g., /api/v1/file-preprocessing/tasks/download/xyz
+                                        
+                                        // Correctly construct the full download URL
+                                        const url = new URL(API_BASE_URL);
+                                        streamDownloadUrl = `${url.protocol}//${url.host}${backendDownloadPath}`;
+
                                         streamDownloadFilename = update.metadata.downloadFilename || 'download';
                                         console.log("Download URL constructed on frontend:", streamDownloadUrl);
                                     } else {
@@ -403,7 +416,7 @@ export function WorkflowInterface() {
                            title: "Streaming Error",
                            description: `Failed to process update from server.`,
                            variant: "destructive",
-                           duration: 5000,
+                           duration: Infinity,
                         });
                         taskFailedDuringStream = true;
                         setErrorMessage(`Streaming error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
@@ -454,7 +467,7 @@ export function WorkflowInterface() {
                title: finalTitle,
                description: finalDescription,
                variant: finalVariant,
-               duration: streamDownloadUrl ? Infinity : 5000,
+               duration: Infinity,
             });
 
             if (streamDownloadUrl && streamDownloadFilename) {
@@ -473,7 +486,7 @@ export function WorkflowInterface() {
                 title: "Streaming Error",
                 description: `An error occurred while processing the agent's response stream.`,
                 variant: "destructive",
-                duration: 5000,
+                duration: Infinity,
              });
             setIsProcessing(false);
         });
@@ -485,7 +498,7 @@ export function WorkflowInterface() {
             title: "Submission Error",
             description: `An error occurred: ${error.message || String(error)}`,
             variant: "destructive",
-            duration: 5000,
+            duration: Infinity,
         });
         setIsProcessing(false);
         setErrorMessage(error.message || String(error));
@@ -497,8 +510,15 @@ export function WorkflowInterface() {
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Workflow File Pre-processing</h1>
+    <>
+      <MessageDetailModal
+        isOpen={modalState.isOpen}
+        onClose={hideModal}
+        title={modalState.title}
+        message={modalState.message}
+      />
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <h1 className="text-2xl font-bold">Workflow File Pre-processing</h1>
       
       <Card className="p-6">
         <Tabs defaultValue="default" value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -632,5 +652,6 @@ export function WorkflowInterface() {
         errorMessage={errorMessage}
       />
     </div>
+    </>
   );
 } 

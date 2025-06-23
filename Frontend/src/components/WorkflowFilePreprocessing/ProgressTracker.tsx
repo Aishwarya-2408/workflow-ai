@@ -95,21 +95,37 @@ export function ProgressTracker({ isProcessing, progress, isCompleted, downloadU
         </div>
       )}
       
-      {isCompleted && downloadUrl && downloadFilename && (
+      {isCompleted && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-green-600">
-            <CheckCircle className="w-5 h-5" />
-            <span className="text-sm font-medium">Processing completed successfully!</span>
-          </div>
-          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-            <p className="text-sm text-green-800 mb-3">
-              Your files have been processed and results are ready for download.
-            </p>
-            <Button onClick={handleDownload} className="w-full bg-green-600 hover:bg-green-700">
-              <Download className="w-4 h-4 mr-2" />
-              Download Processed Results ({downloadFilename})
-            </Button>
-          </div>
+          {downloadUrl && downloadFilename ? (
+            <>
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">Processing completed successfully!</span>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                <p className="text-sm text-green-800 mb-3">
+                  Your files have been processed and results are ready for download.
+                </p>
+                <Button onClick={handleDownload} className="w-full bg-green-600 hover:bg-green-700">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Processed Results ({downloadFilename})
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-yellow-600">
+                <CheckCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">Processing completed.</span>
+              </div>
+              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                <p className="text-sm text-yellow-800">
+                  The task finished, but no output files were generated for download.
+                </p>
+              </div>
+            </>
+          )}
         </div>
       )}
     </Card>

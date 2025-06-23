@@ -181,7 +181,6 @@ class MainAgent:
                         final_agent_result = {
                             "status": "FAILURE_CODE_GENERATION", 
                             "message": f"Failed to generate valid code after {current_retry_attempt + 1} attempt(s). Last error: {error_msg}",
-                            "generated_code": last_generated_code,
                             "validation_feedback": current_attempt_validation_feedback
                         }
                         break 
@@ -223,7 +222,6 @@ class MainAgent:
                         final_agent_result = {
                             "status": "FAILURE_CRITICAL_EXECUTION", # New status for critical failures
                             "message": f"Critical Error: Code execution failed due to an unrecoverable error (e.g., file not found). Last error: {execution_result.get('error', 'Unknown critical error')}",
-                            "generated_code": last_generated_code,
                             "execution_stdout": execution_result.get("stdout"),
                             "execution_stderr": execution_result.get("stderr"),
                             "validation_feedback": execution_error_feedback
@@ -246,7 +244,6 @@ class MainAgent:
                         final_agent_result = {
                             "status": "FAILURE_EXECUTION",
                             "message": f"Code execution failed after {current_retry_attempt + 1} attempt(s). Last error: {execution_result.get('error', 'Unknown execution error')}",
-                            "generated_code": last_generated_code, # Include code that failed execution
                             "execution_stdout": execution_result.get("stdout"),
                             "execution_stderr": execution_result.get("stderr"),
                             "validation_feedback": execution_error_feedback # Include the detailed feedback
@@ -260,7 +257,6 @@ class MainAgent:
                 prelim_final_agent_result = {
                     "status": "SUCCESS", # Assume success initially, delivery module will refine
                     "message": f"Task completed successfully after {current_retry_attempt + 1} attempt(s).",
-                    "generated_code": last_generated_code,
                     "execution_stdout": execution_result.get("stdout"),
                     "execution_stderr": execution_result.get("stderr"),
                     # execution_feedback will be populated by output_delivery_mod
@@ -286,7 +282,6 @@ class MainAgent:
                 "status": "CRITICAL_FAILURE_UNHANDLED_EXCEPTION",
                 "message": f"An unhandled critical error occurred: {str(e)}",
                 "error_details": traceback.format_exc(),
-                "generated_code": last_generated_code, # Include last generated code if available
                 "execution_stdout": last_execution_result.get("stdout") if last_execution_result else None,
                 "execution_stderr": last_execution_result.get("stderr") if last_execution_result else None,
             }

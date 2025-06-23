@@ -12,7 +12,7 @@ import re # NEW IMPORT: For regex to extract file paths from stdout
 import zipfile # NEW IMPORT: For zipping multiple output files
 from typing import Any, Dict, List, Literal, Optional
 
-from flask import Flask, request, jsonify, send_from_directory, Response
+from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone
@@ -171,9 +171,9 @@ try:
     lm = LoggingModule(log_file=AGENT_CONFIG["agent_log_file"], log_level=AGENT_CONFIG["agent_log_level"], log_folder=log_folder_path)
     logger = lm.get_logger() if hasattr(lm, 'get_logger') else lm.logger
 except Exception as e:
-     print(f"Error initializing LoggingModule: {e}. Using basic logging.")
-     logging.basicConfig(level=AGENT_CONFIG["agent_log_level"], filename=None) # Explicitly set filename to None
-     logger = logging.getLogger(__name__)
+    print(f"Error initializing LoggingModule: {e}. Using basic logging.")
+    logging.basicConfig(level=AGENT_CONFIG["agent_log_level"], filename=None) # Explicitly set filename to None
+    logger = logging.getLogger(__name__)
 
 # Create blueprint for file processing API
 def create_file_processor_blueprint():
@@ -283,76 +283,54 @@ def create_file_processor_blueprint():
             state = status_map.get(result.get("status", "unknown"), "unknown")
             message_text = result.get("message", "")
             
+            download_url = None
+            download_filename = None
+
+            if state == "completed":
+                # NEW LOGIC: Check the task's output directory for any generated files and zip them.
+                # 'task_output_dir' was defined when the task was set up.
+                try:
+                    files_in_dir = [f for f in os.listdir(task_output_dir) if os.path.isfile(os.path.join(task_output_dir, f))]
+                    
+                    if files_in_dir:
+                        logger.info(f"Task {task_id}: Found {len(files_in_dir)} output file(s) in {task_output_dir}. Creating a zip archive.")
+                        
+                        # The final zip will be stored in the parent 'Output' directory, not the task-specific one.
+                        downloads_dir_abs = os.path.join(workspace_root, DOWNLOADS_DIR)
+                        os.makedirs(downloads_dir_abs, exist_ok=True)
+                        
+                        download_filename = f"{task_id}_output.zip"
+                        zip_filepath = os.path.join(downloads_dir_abs, download_filename)
+
+                        with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+                            for file in files_in_dir:
+                                file_path_to_zip = os.path.join(task_output_dir, file)
+                                zipf.write(file_path_to_zip, file) # Use original filename as arcname in zip
+                        
+                        downloadable_files[task_id] = zip_filepath # Store absolute path to the zip
+                        download_url = f"/api/v1/file-preprocessing/tasks/download/{task_id}"
+                        logger.info(f"Task {task_id}: Created downloadable zip file at {zip_filepath}. URL: {download_url}")
+                        if event_sink_q: 
+                            event_sink_q.put({"id": task_id, "progress": 90, "message": "Output files zipped and ready for download.", "event_type": "task_progress_update"})
+                    
+                    else:
+                        logger.info(f"Task {task_id}: Task completed, but no output files were found in {task_output_dir}.")
+                        message_text += "\nNo output files were generated."
+                
+                except Exception as e:
+                    logger.error(f"Task {task_id}: Error processing output directory or creating zip file: {e}", exc_info=True)
+                    message_text += f"\nError preparing output files for download: {e}"
+
             # If the state is completed, and we have execution feedback, incorporate that into the final message.
             if state == "completed" and result.get("execution_feedback"):
                 message_text += "\nExecution Feedback: " + "\n".join(result["execution_feedback"])
 
             current_status = {"state": state, "timestamp": get_iso_timestamp(), "message": {"role": "agent", "parts": [{"type": "text", "text": message_text}]}}
             task['status'] = current_status
-            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "event_type": "task_status_update"}) # MODIFIED: put to synchronous queue
+            if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "event_type": "task_status_update"})
 
-            # Build artifact if code was generated
+            # Build artifact
             artifacts = []
-            download_url = None
-            download_filename = None
-
-            # Prioritize saving execution stdout if available and task was successful
-            if state == "completed" and result.get("execution_stdout"):
-                # NEW LOGIC: Extract Excel file paths from stdout
-                excel_file_paths = re.findall(r"Successfully processed '.*?\.xlsx' and saved output to '(.*?\.xlsx)'", result["execution_stdout"])
-
-                if excel_file_paths:
-                    downloads_dir_abs = os.path.join(workspace_root, DOWNLOADS_DIR)
-                    os.makedirs(downloads_dir_abs, exist_ok=True)
-
-                    if len(excel_file_paths) == 1:
-                        # If only one Excel file, make it directly downloadable
-                        output_path = excel_file_paths[0] # Use the path directly
-                        output_filename = os.path.basename(output_path)
-                        # Ensure the output_path is absolute and within DOWNLOADS_DIR for security
-                        resolved_output_path = os.path.abspath(output_path)
-                        # The output path should be in task_output_dir, not downloads_dir_abs directly
-                        expected_prefix = os.path.abspath(os.path.join(downloads_dir_abs, task_id))
-                        if not resolved_output_path.startswith(expected_prefix):
-                            logger.warning(f"Task {task_id}: Generated Excel file path '{output_path}' is outside expected task-specific downloads directory ('{expected_prefix}'). Skipping direct download.")
-                            output_path = None # Invalidate if not in expected dir
-
-                        if output_path:
-                            downloadable_files[task_id] = resolved_output_path # Store the absolute path
-                            download_url = f"/api/v1/file-preprocessing/tasks/download/{task_id}"
-                            logger.info(f"Task {task_id}: Saved single Excel output to {resolved_output_path}. URL: {download_url}")
-                            if event_sink_q: event_sink_q.put({"id": task_id, "progress": 90, "message": "Excel file generation and download setup complete.", "event_type": "task_progress_update"})
-                    else:
-                        # If multiple Excel files, create a zip file
-                        zip_filename = f"{task_id}_workflow_outputs.zip"
-                        zip_filepath = os.path.join(downloads_dir_abs, zip_filename)
-
-                        try:
-                            with zipfile.ZipFile(zip_filepath, 'w') as zipf:
-                                for file_path in excel_file_paths:
-                                    resolved_file_path = os.path.abspath(file_path)
-                                    # Ensure the file being zipped is from the task's output directory
-                                    expected_prefix = os.path.abspath(os.path.join(downloads_dir_abs, task_id))
-                                    if resolved_file_path.startswith(expected_prefix):
-                                        zipf.write(resolved_file_path, os.path.relpath(resolved_file_path, expected_prefix)) # Save with relative path in zip
-                                        logger.info(f"Task {task_id}: Added {os.path.basename(resolved_file_path)} to zip.")
-                                    else:
-                                        logger.warning(f"Task {task_id}: Skipping zipping file '{file_path}' as it is outside expected task-specific downloads directory ('{expected_prefix}').")
-
-                            downloadable_files[task_id] = zip_filepath
-                            download_url = f"/api/v1/file-preprocessing/tasks/download/{task_id}"
-                            output_filename = zip_filename
-                            logger.info(f"Task {task_id}: Zipped multiple Excel outputs to {zip_filepath}. URL: {download_url}")
-                            if event_sink_q: event_sink_q.put({"id": task_id, "progress": 90, "message": "Zipped Excel files generation and download setup complete.", "event_type": "task_progress_update"})
-
-                        except Exception as e:
-                            logger.error(f"Task {task_id}: Failed to create zip file for download: {e}", exc_info=True)
-                            download_url = None
-                            output_filename = None
-                else:
-                    logger.info(f"Task {task_id}: No Excel files found in stdout to make downloadable.")
-
-            # Prepare artifact parts
             artifact_parts = []
             artifact_description = "Output from the agent"
 
@@ -364,40 +342,34 @@ def create_file_processor_blueprint():
                 artifact_parts.append({"type": "text", "text": f"Execution STDERR:\n{result['execution_stderr']}"})
                 artifact_description += " and errors"
 
-            # Include generated code as a text part if available
-            if result.get("generated_code"):
-                artifact_parts.append({"type": "text", "text": f"Generated Code:\n```python\n{result['generated_code']}\n```"})
-                artifact_description += ", including generated code"
-
             # Include execution feedback as a text part
             if result.get("execution_feedback"):
                 artifact_parts.append({"type": "text", "text": f"Execution Feedback:\n{chr(10).join(result['execution_feedback'])}"})
                 artifact_description += " and execution feedback"
 
             # Add a part indicating the downloadable file if successful
-            if download_url and output_filename:
-                artifact_parts.append({"type": "text", "text": f"\nDownloadable output available: {output_filename}"})
+            if download_url and download_filename:
+                artifact_parts.append({"type": "text", "text": f"\nDownloadable output available: {download_filename}"})
 
             # Create the artifact
             if artifact_parts:
                 artifact = {
-                    "name": "task_results", # Generic name
+                    "name": "task_results",
                     "description": artifact_description,
                     "parts": artifact_parts
                 }
-                # task_store[task_id]['artifacts'] = artifacts # This would overwrite existing
                 if 'artifacts' not in task or not isinstance(task['artifacts'], list):
                     task['artifacts'] = []
                 task['artifacts'].append(artifact)
                 if event_sink_q:
-                    event_sink_q.put({"id": task_id, "artifact": artifact, "event_type": "task_artifact_update"}) # MODIFIED: put to synchronous queue
+                    event_sink_q.put({"id": task_id, "artifact": artifact, "event_type": "task_artifact_update"})
 
             # Send final status update
-            final_metadata = {"downloadUrl": download_url, "downloadFilename": output_filename} if download_url else {}
+            final_metadata = {"downloadUrl": download_url, "downloadFilename": download_filename} if download_url else {}
             final_status_update = {"id": task_id, "status": current_status, "final": True, "metadata": final_metadata, "event_type": "task_status_update", "progress": 100}
             if event_sink_q:
-                event_sink_q.put(final_status_update) # MODIFIED: put to synchronous queue
-                logger.info(f"Task {task_id}: Successfully put final_status_update to queue.") # NEW LOG
+                event_sink_q.put(final_status_update)
+                logger.info(f"Task {task_id}: Successfully put final_status_update to queue.")
 
             logger.info(f"Task {task_id}: MainAgent processing completed with state: {state}. Download URL included: {bool(download_url)}")
 
@@ -409,7 +381,7 @@ def create_file_processor_blueprint():
             if event_sink_q: event_sink_q.put({"id": task_id, "status": current_status, "final": True, "event_type": "task_status_update", "progress": 100}) # MODIFIED: added progress: 100
         finally:
             if os.path.exists(original_main_agent_instruction_path):
-                 pass
+                pass
 
             uploads_dir_abs = os.path.join(workspace_root, "uploads")
             logger.info(f"Task {task_id}: Cleaning up {len(input_file_paths)} input files from uploads.")
@@ -636,11 +608,11 @@ def create_file_processor_blueprint():
 
     @file_processor_api.route("/tasks/download/<task_id>", methods=['GET'])
     def file_processor_download_task_output_file(task_id: str):
-        """Serves the generated output file for a given task ID within the file processing workflow."""
+        """Serves the generated output file for a given task ID."""
         file_path = downloadable_files.get(task_id)
 
         if not file_path:
-            logger.warning(f"File Processor Download: Download requested for task {task_id}, but no downloadable file found.")
+            logger.warning(f"Download requested for task {task_id}, but no downloadable file found.")
             return jsonify({"detail": f"No downloadable file found for task ID '{task_id}'."}), 404
 
         # Security check: Ensure the file path is within the designated downloads directory
@@ -649,39 +621,22 @@ def create_file_processor_blueprint():
         resolved_file_path = os.path.abspath(file_path)
 
         if not resolved_file_path.startswith(downloads_dir_abs):
-            logger.error(f"File Processor Download: Attempted download path traversal: {resolved_file_path} is outside {downloads_dir_abs}")
-            return jsonify({"detail": "Access denied."}), 403 # Forbidden
+            logger.error(f"Download attempt for path outside designated downloads directory: {resolved_file_path}")
+            return jsonify({"detail": "Access denied."}), 403
 
-        if not os.path.exists(resolved_file_path) or not os.path.isfile(resolved_file_path):
-            logger.error(f"File Processor Download: Download requested for task {task_id}, file not found at expected path: {resolved_file_path}")
-            return jsonify({"detail": f"Downloadable file not found for task ID '{task_id}'."}), 404
+        if not os.path.exists(resolved_file_path):
+            logger.error(f"Download requested for task {task_id}, but file not found at path: {resolved_file_path}")
+            return jsonify({"detail": "File not found."}), 404
 
-        logger.info(f"File Processor Download: Serving downloadable file for task {task_id} from: {resolved_file_path}")
-
-        # Determine mime type
-        import mimetypes
-        mime_type, _ = mimetypes.guess_type(resolved_file_path)
-        if not mime_type:
-            mime_type = 'application/octet-stream'
-
-        # Try to get the original filename if stored, otherwise use the saved filename
-        # In this specific case (task output), the saved filename is the primary name.
-        original_filename = os.path.basename(resolved_file_path)
-
-        # Use send_from_directory to serve the file safely
-        download_dir = os.path.dirname(resolved_file_path)
-        download_filename_base = os.path.basename(resolved_file_path)
-
+        logger.info(f"Serving downloadable file for task {task_id} from: {resolved_file_path}")
         try:
-            return send_from_directory(
-                download_dir,
-                download_filename_base,
-                mimetype=mime_type,
-                as_attachment=True, # Suggest download
-                download_name=original_filename # Use the friendly filename for download
+            return send_file(
+                resolved_file_path,
+                as_attachment=True,
+                download_name=os.path.basename(resolved_file_path) # Suggest the filename to the browser
             )
         except Exception as e:
-            logger.error(f"File Processor Download: Error serving file {resolved_file_path}: {e}", exc_info=True)
+            logger.error(f"Error serving file {resolved_file_path}: {e}", exc_info=True)
             return jsonify({"detail": "Error serving file."}), 500
 
     @file_processor_api.route("/tasks/<task_id>/artifacts/<filename>", methods=['GET'])
